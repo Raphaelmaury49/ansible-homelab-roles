@@ -66,6 +66,13 @@
     state: absent
   when: not base_admin_sudo_nopasswd
 
+- name: Mode d activation de sshd (ssh.socket sur les templates Debian 13)
+  ansible.builtin.command: systemctl is-active ssh.socket
+  register: _base_ssh_socket
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
 - name: Durcissement sshd
   ansible.builtin.template:
     src: sshd-hardening.conf.j2

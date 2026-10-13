@@ -1,8 +1,10 @@
 ---
+# Avec ssh.socket, un SIGHUP fait echouer sshd (Cannot bind any address) : on redemarre
+# le service, le socket garde le port et les sessions ouvertes ne sont pas coupees.
 - name: Reload ssh
   ansible.builtin.systemd_service:
     name: ssh
-    state: reloaded
+    state: "{{ 'restarted' if (_base_ssh_socket.stdout | default('')) == 'active' else 'reloaded' }}"
 
 - name: Reload nftables
   ansible.builtin.systemd_service:
