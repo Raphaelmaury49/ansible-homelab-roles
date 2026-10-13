@@ -3,6 +3,9 @@ table inet filter {
   chain input {
     ip saddr { {{ technitium_dns_sources | join(', ') }} } udp dport 53 accept comment "dns-udp"
     ip saddr { {{ technitium_dns_sources | join(', ') }} } tcp dport 53 accept comment "dns-tcp"
+{% if technitium_dhcp %}
+    udp dport 67 accept comment "dhcp-server"
+{% endif %}
 {% if technitium_web_sources %}
     ip saddr { {{ technitium_web_sources | join(', ') }} } tcp dport {{ technitium_web_port }} accept comment "technitium-web"
 {% endif %}

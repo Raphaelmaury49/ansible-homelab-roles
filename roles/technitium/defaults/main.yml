@@ -10,6 +10,7 @@ technitium_install_dir: /opt/technitium/dns
 # Pare-feu (fichier /etc/nftables.d/technitium.nft, inclus par le role base)
 technitium_dns_sources: []          # CIDR autorisees a interroger le DNS (53/udp+tcp) - OBLIGATOIRE
 technitium_web_sources: []          # CIDR autorisees sur la console/API (port web)
+technitium_dhcp: false               # true = ouvre 67/udp (serveur DHCP ; clients en broadcast depuis 0.0.0.0)
 
 # Token API non expirant cree pour l'automatisation, stocke sur le controleur (600)
 technitium_api_token_name: automation
