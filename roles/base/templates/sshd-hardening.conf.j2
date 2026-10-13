@@ -1,5 +1,7 @@
 # {{ ansible_managed }} (role base)
+{% if base_ssh_port != 22 %}
 Port {{ base_ssh_port }}
+{% endif %}
 PubkeyAuthentication yes
 PasswordAuthentication no
 KbdInteractiveAuthentication no
