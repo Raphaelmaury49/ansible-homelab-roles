@@ -10,11 +10,13 @@ The roles hold **no infrastructure data**: every address, user and key comes fro
 |---|---|
 | `base` | Admin account with exclusive SSH keys, sshd hardening (keys only, no root, `AllowUsers`), nftables default-drop with an anti-lockout guard, unattended upgrades, timezone (LXC-safe), node_exporter, qemu-guest-agent on VMs |
 | `mcp_shell` | Per-guest MCP server (FastMCP, streamable HTTP) exposing `run_command`, `read_file`, `write_file`, `system_info`. Reachable only from the gateway IP (nftables) **and** with a per-guest shared key (`X-MCP-Key`). Dedicated system user, sudo sessions recorded with `log_output`, every call logged to syslog (`mcp-shell-audit`) |
+| `technitium` | Technitium DNS Server via the official installer (.NET runtime, non-root systemd service), first-boot API bootstrap (admin password change, non-expiring API token stored on the controller), idempotent settings through `/api/settings/set`, nftables rules for DNS and the web console |
 
 ## Design notes
 
 - **Firewall never touches Docker.** `base` resets only its own `inet filter` table (`table … / delete table … / table …`) instead of `flush ruleset`, and other roles drop rules into `/etc/nftables.d/*.nft`.
 - **Anti-lockout.** `base` refuses to run without SSH keys and allowed sources, and always allows the IP of the controller currently connected.
+- **Controller IP detection runs on the controller** (`ip route get`): `SSH_CLIENT` is not available under `become`.
 - **Pinned dependencies.** `mcp_shell` pins `fastmcp` — an unpinned MCP SDK broke servers in the past.
 - **Defense in depth for MCP.** OAuth is handled by the gateway; between gateway and guest, traffic is filtered by source IP *and* authenticated by a 48-char key generated on the controller (`ansible.builtin.password` lookup), never committed.
 
