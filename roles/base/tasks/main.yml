@@ -42,12 +42,15 @@
     shell: /bin/bash
     password: "{{ base_admin_password_hash if base_admin_password_hash else omit }}"
     update_password: always
+  register: _base_admin
 
 - name: Cles SSH du compte admin (liste exclusive)
   ansible.posix.authorized_key:
     user: "{{ base_admin_user }}"
     key: "{{ base_admin_ssh_keys | join('\n') }}"
     exclusive: true
+  # en --check le compte n existe pas encore au premier passage
+  when: not (ansible_check_mode and _base_admin.changed)
 
 - name: Sudo sans mot de passe
   ansible.builtin.copy:
