@@ -12,6 +12,9 @@ table inet filter {
     ct state invalid drop
     meta l4proto { icmp, ipv6-icmp } accept
     ip saddr { {{ ssh_src | join(', ') }} } tcp dport {{ base_ssh_port }} accept comment "ssh"
+{% if base_dhcp_servers %}
+    ip saddr { {{ base_dhcp_servers | join(', ') }} } udp sport 67 udp dport 68 accept comment "dhcp-client"
+{% endif %}
 {% if base_node_exporter and base_node_exporter_sources %}
     ip saddr { {{ base_node_exporter_sources | join(', ') }} } tcp dport {{ base_node_exporter_port }} accept comment "node_exporter"
 {% endif %}
