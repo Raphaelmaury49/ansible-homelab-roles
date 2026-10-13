@@ -1,0 +1,11 @@
+---
+- name: Restart mcp-shell
+  ansible.builtin.systemd_service:
+    name: mcp-shell
+    state: restarted
+    daemon_reload: true
+
+- name: Reload nftables
+  ansible.builtin.systemd_service:
+    name: nftables
+    state: reloaded

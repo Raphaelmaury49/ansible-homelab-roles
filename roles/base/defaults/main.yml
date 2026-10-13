@@ -1,0 +1,32 @@
+---
+# Compte d'administration cree sur le guest
+base_admin_user: admin
+base_admin_password_hash: ""        # hash sha512-crypt ; vide = pas de mot de passe (console impossible)
+base_admin_sudo_nopasswd: true      # requis si Ansible se connecte avec ce compte sans become_pass
+base_admin_ssh_keys: []             # cles publiques autorisees (OBLIGATOIRE)
+
+# SSH
+base_ssh_port: 22
+base_ssh_allowed_sources: []        # CIDR autorisees en SSH (OBLIGATOIRE si base_firewall)
+base_disable_root_login: true
+
+# Systeme
+base_timezone: Europe/Paris
+base_packages:
+  - sudo
+  - curl
+  - ca-certificates
+  - nftables
+  - unattended-upgrades
+  - apt-listchanges
+  - less
+base_auto_upgrades: true
+
+# Pare-feu (nftables, table inet filter dediee : ne touche pas aux tables Docker)
+base_firewall: true
+base_firewall_extra_rules: []       # ex. [{port: 8080, proto: tcp, sources: ["10.0.0.0/24"]}]
+
+# Supervision
+base_node_exporter: true
+base_node_exporter_port: 9100
+base_node_exporter_sources: []      # CIDR autorisees a scraper (vide = port ferme)

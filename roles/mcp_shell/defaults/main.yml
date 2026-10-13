@@ -1,0 +1,16 @@
+---
+mcp_shell_name: "{{ inventory_hostname }}"
+mcp_shell_port: 8100
+mcp_shell_bind: "{{ ansible_default_ipv4.address }}"
+mcp_shell_user: mcp-shell
+mcp_shell_dir: /opt/mcp/shell
+mcp_shell_allowed_src: []           # IP de la gateway MCP (OBLIGATOIRE)
+mcp_shell_sudo: true                # false = commandes sans privileges
+mcp_shell_default_timeout: 60
+mcp_shell_max_timeout: 600
+mcp_shell_max_output: 65536
+mcp_shell_pip:
+  - fastmcp==4.0.3
+# Cle partagee gateway <-> guest, generee une fois sur le controleur (chmod 600)
+mcp_shell_key_file: "{{ playbook_dir }}/../credentials/{{ inventory_hostname }}/mcp_shell_key"
+mcp_shell_upstream_key: "{{ lookup('ansible.builtin.password', mcp_shell_key_file ~ ' length=48 chars=ascii_letters,digits') }}"

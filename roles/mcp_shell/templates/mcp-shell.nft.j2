@@ -1,0 +1,6 @@
+# {{ ansible_managed }} (role mcp_shell)
+table inet filter {
+  chain input {
+    ip saddr { {{ mcp_shell_allowed_src | join(', ') }} } tcp dport {{ mcp_shell_port }} accept comment "mcp-shell"
+  }
+}

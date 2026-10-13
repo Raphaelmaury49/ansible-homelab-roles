@@ -1,0 +1,17 @@
+[Unit]
+Description=MCP shell {{ mcp_shell_name }}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ mcp_shell_user }}
+Group={{ mcp_shell_user }}
+WorkingDirectory={{ mcp_shell_dir }}
+EnvironmentFile={{ mcp_shell_dir }}/.env
+ExecStart={{ mcp_shell_dir }}/venv/bin/python {{ mcp_shell_dir }}/server.py
+Restart=always
+RestartSec=3
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

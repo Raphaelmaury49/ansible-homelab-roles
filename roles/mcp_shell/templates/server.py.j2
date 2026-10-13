@@ -1,0 +1,102 @@
+# {{ ansible_managed }} (role mcp_shell)
+import asyncio, os, platform, shutil, syslog, tempfile
+from pathlib import Path
+from shlex import quote
+from fastmcp import FastMCP
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+
+KEY     = os.environ["MCP_UPSTREAM_KEY"]
+HOST    = os.environ.get("BIND_HOST", "127.0.0.1")
+PORT    = int(os.environ.get("BIND_PORT", "{{ mcp_shell_port }}"))
+DEF_TO  = {{ mcp_shell_default_timeout }}
+MAX_TO  = {{ mcp_shell_max_timeout }}
+MAX_OUT = {{ mcp_shell_max_output }}
+SUDO    = {{ 'True' if mcp_shell_sudo else 'False' }}
+
+syslog.openlog("mcp-shell-audit", facility=syslog.LOG_AUTH)
+
+
+class KeyCheck(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.headers.get("x-mcp-key") != KEY:
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return await call_next(request)
+
+
+mcp = FastMCP("shell-{{ mcp_shell_name }}")
+
+
+def _cut(b: bytes) -> str:
+    s = b.decode(errors="replace")
+    return s if len(s) <= MAX_OUT else s[:MAX_OUT] + f"\n[... tronque, {len(s)} caracteres au total]"
+
+
+@mcp.tool()
+async def run_command(command: str, timeout: int = DEF_TO, cwd: str = "/", as_root: bool = False) -> dict:
+    """Execute une commande bash sur {{ mcp_shell_name }}. as_root=True passe par sudo.
+    Chaque appel est un bash neuf (cd et variables ne persistent pas : utiliser cwd).
+    timeout max {{ mcp_shell_max_timeout }} s, sortie tronquee a {{ mcp_shell_max_output }} caracteres."""
+    timeout = max(1, min(timeout, MAX_TO))
+    argv = ["bash", "-lc", command]
+    if as_root:
+        if not SUDO:
+            return {"success": False, "error": "sudo desactive sur cet hote"}
+        argv = ["sudo", "-n", "--"] + argv
+    syslog.syslog(f"run root={as_root} cwd={cwd} cmd={command!r}")
+    p = await asyncio.create_subprocess_exec(*argv, cwd=cwd,
+                                             stdout=asyncio.subprocess.PIPE,
+                                             stderr=asyncio.subprocess.PIPE)
+    try:
+        out, err = await asyncio.wait_for(p.communicate(), timeout)
+    except asyncio.TimeoutError:
+        p.kill()
+        await p.wait()
+        syslog.syslog(f"timeout {timeout}s cmd={command!r}")
+        return {"success": False, "error": f"timeout apres {timeout}s"}
+    return {"success": p.returncode == 0, "exit_code": p.returncode,
+            "stdout": _cut(out), "stderr": _cut(err)}
+
+
+@mcp.tool()
+async def read_file(path: str, max_bytes: int = MAX_OUT) -> dict:
+    """Lit un fichier texte (via sudo si disponible)."""
+    r = await run_command(f"head -c {int(max_bytes)} -- {quote(path)}", as_root=SUDO)
+    return {"path": path, **r}
+
+
+@mcp.tool()
+async def write_file(path: str, content: str, mode: str = "0644", backup: bool = True) -> dict:
+    """Ecrit un fichier complet (via sudo si disponible).
+    backup=True copie l'existant en <path>.bak-<horodatage>."""
+    syslog.syslog(f"write path={path} size={len(content)}")
+    fd, tmp = tempfile.mkstemp(prefix="mcp-shell-")
+    with os.fdopen(fd, "w") as fh:
+        fh.write(content)
+    os.chmod(tmp, 0o644)
+    q = quote(path)
+    bk = f"[ -f {q} ] && cp -a {q} {q}.bak-$(date +%Y%m%d-%H%M%S); " if backup else ""
+    r = await run_command(f"{bk}install -m {quote(mode)} {quote(tmp)} {q}", as_root=SUDO)
+    Path(tmp).unlink(missing_ok=True)
+    return {"path": path, **r}
+
+
+@mcp.tool()
+def system_info() -> dict:
+    """Resume de l'hote : OS, noyau, uptime, charge, RAM, disque /."""
+    du = shutil.disk_usage("/")
+    mem = dict(l.split(":", 1) for l in Path("/proc/meminfo").read_text().splitlines())
+    osr = dict(l.split("=", 1) for l in Path("/etc/os-release").read_text().splitlines() if "=" in l)
+    return {
+        "host": platform.node(), "os": osr.get("PRETTY_NAME", "").strip('"'),
+        "kernel": platform.release(), "uptime_s": float(Path("/proc/uptime").read_text().split()[0]),
+        "load": os.getloadavg(), "mem_total": mem["MemTotal"].strip(),
+        "mem_available": mem["MemAvailable"].strip(),
+        "disk_root_gb": {"total": round(du.total / 1e9, 1), "free": round(du.free / 1e9, 1)},
+    }
+
+
+if __name__ == "__main__":
+    mcp.run(transport="http", host=HOST, port=PORT, path="/mcp",
+            middleware=[Middleware(KeyCheck)])

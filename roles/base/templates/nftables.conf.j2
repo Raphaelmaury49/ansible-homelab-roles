@@ -1,0 +1,30 @@
+#!/usr/sbin/nft -f
+# {{ ansible_managed }} (role base)
+# Seule la table inet filter est reinitialisee : les tables Docker/iptables-nft restent intactes.
+{% set ssh_src = (base_ssh_allowed_sources + ([_base_ctrl_ip] if _base_ctrl_ip else [])) | unique %}
+table inet filter
+delete table inet filter
+table inet filter {
+  chain input {
+    type filter hook input priority filter; policy drop;
+    iif "lo" accept
+    ct state established,related accept
+    ct state invalid drop
+    meta l4proto { icmp, ipv6-icmp } accept
+    ip saddr { {{ ssh_src | join(', ') }} } tcp dport {{ base_ssh_port }} accept comment "ssh"
+{% if base_node_exporter and base_node_exporter_sources %}
+    ip saddr { {{ base_node_exporter_sources | join(', ') }} } tcp dport {{ base_node_exporter_port }} accept comment "node_exporter"
+{% endif %}
+{% for r in base_firewall_extra_rules %}
+    {% if r.sources | default([]) %}ip saddr { {{ r.sources | join(', ') }} } {% endif %}{{ r.proto | default('tcp') }} dport {{ r.port }} accept{% if r.comment is defined %} comment "{{ r.comment }}"{% endif %}
+
+{% endfor %}
+  }
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+  }
+  chain output {
+    type filter hook output priority filter; policy accept;
+  }
+}
+include "/etc/nftables.d/*.nft"
