@@ -7,7 +7,7 @@
 
 - name: Paquets
   ansible.builtin.apt:
-    name: [python3-venv, sudo]
+    name: [python3-venv, python3-packaging, sudo]   # packaging : requis par le module pip
     state: present
 
 - name: Utilisateur systeme
