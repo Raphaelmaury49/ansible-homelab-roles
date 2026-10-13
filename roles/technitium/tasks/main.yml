@@ -107,9 +107,17 @@
             body_format: form-urlencoded
             body: {user: admin, pass: "{{ technitium_admin_password }}"}
             return_content: true
-          register: _tt_login
+          register: _tt_login_new
           no_log: true
-          failed_when: (_tt_login.json.status | default('error')) != 'ok'
+          failed_when: (_tt_login_new.json.status | default('error')) != 'ok'
+
+    # une tache sautee qui fait un register ecrase la variable : on consolide ici
+    - name: Session d administration
+      ansible.builtin.set_fact:
+        _tt_token_session: >-
+          {{ _tt_login_new.json.token if (_tt_login_new.json.token | default(''))
+             else _tt_login.json.token }}
+      no_log: true
 
     - name: Token API deja present sur le controleur ?
       ansible.builtin.stat:
@@ -153,7 +161,7 @@
     - name: Lecture des reglages actuels
       ansible.builtin.uri:
         url: "http://127.0.0.1:{{ technitium_web_port }}/api/settings/get"
-        headers: {Authorization: "Bearer {{ _tt_login.json.token }}"}
+        headers: {Authorization: "Bearer {{ _tt_token_session }}"}
         return_content: true
       register: _tt_current
       no_log: true
@@ -174,7 +182,7 @@
       ansible.builtin.uri:
         url: "http://127.0.0.1:{{ technitium_web_port }}/api/settings/set"
         method: POST
-        headers: {Authorization: "Bearer {{ _tt_login.json.token }}"}
+        headers: {Authorization: "Bearer {{ _tt_token_session }}"}
         body_format: form-urlencoded
         body: "{{ _tt_changes }}"
         return_content: true
@@ -186,7 +194,7 @@
     - name: Fermeture de la session d'administration
       ansible.builtin.uri:
         url: "http://127.0.0.1:{{ technitium_web_port }}/api/user/logout"
-        headers: {Authorization: "Bearer {{ _tt_login.json.token }}"}
+        headers: {Authorization: "Bearer {{ _tt_token_session }}"}
       no_log: true
       failed_when: false
 
