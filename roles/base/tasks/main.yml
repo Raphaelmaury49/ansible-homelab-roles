@@ -111,6 +111,7 @@
     enabled: true
     state: started
   when: base_node_exporter
+  ignore_errors: "{{ ansible_check_mode }}"  # paquet pas encore installe en --check
 
 - name: Agent QEMU
   ansible.builtin.systemd_service:
@@ -118,3 +119,4 @@
     enabled: true
     state: started
   when: ansible_virtualization_type == 'kvm'
+  ignore_errors: "{{ ansible_check_mode }}"  # paquet pas encore installe en --check
