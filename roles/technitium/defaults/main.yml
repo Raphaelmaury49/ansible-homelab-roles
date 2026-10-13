@@ -18,3 +18,8 @@ technitium_api_token_file: "{{ playbook_dir }}/../credentials/{{ inventory_hostn
 
 # Reglages appliques via /api/settings/set (noms de parametres de l'API)
 technitium_settings: {}
+
+# Enregistrements locaux faisant autorite : chaque nom devient sa propre zone primaire
+# (le reste du domaine parent continue d etre resolu en recursif). Ex. split-DNS / ZTNA :
+#   - {name: app.example.com, type: A, value: 10.0.0.10}
+technitium_local_records: []

@@ -191,6 +191,69 @@
       changed_when: true
       when: _tt_changes | default({}) | length > 0
 
+    - name: Zones existantes
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ technitium_web_port }}/api/zones/list"
+        headers: {Authorization: "Bearer {{ _tt_token_session }}"}
+        return_content: true
+      register: _tt_zones
+      no_log: true
+      when: technitium_local_records | length > 0
+
+    - name: Zones primaires des enregistrements locaux
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ technitium_web_port }}/api/zones/create"
+        method: POST
+        headers: {Authorization: "Bearer {{ _tt_token_session }}"}
+        body_format: form-urlencoded
+        body: {zone: "{{ item.name }}", type: Primary}
+        return_content: true
+      register: _tt_zc
+      failed_when: (_tt_zc.json.status | default('error')) != 'ok'
+      changed_when: true
+      loop: "{{ technitium_local_records }}"
+      loop_control: {label: "{{ item.name }}"}
+      when:
+        - technitium_local_records | length > 0
+        - item.name not in (_tt_zones.json.response.zones | map(attribute='name') | list)
+
+    - name: Enregistrements actuels
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ technitium_web_port }}/api/zones/records/get"
+        headers: {Authorization: "Bearer {{ _tt_token_session }}"}
+        body_format: form-urlencoded
+        method: POST
+        body: {zone: "{{ item.name }}", domain: "{{ item.name }}"}
+        return_content: true
+      register: _tt_recs
+      loop: "{{ technitium_local_records }}"
+      loop_control: {label: "{{ item.name }}"}
+      no_log: true
+
+    - name: Enregistrements locaux (remplace la valeur si elle differe)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ technitium_web_port }}/api/zones/records/add"
+        method: POST
+        headers: {Authorization: "Bearer {{ _tt_token_session }}"}
+        body_format: form-urlencoded
+        body:
+          zone: "{{ item.item.name }}"
+          domain: "{{ item.item.name }}"
+          type: "{{ item.item.type | default('A') }}"
+          ipAddress: "{{ item.item.value }}"
+          ttl: "{{ item.item.ttl | default(300) }}"
+          overwrite: "true"
+        return_content: true
+      register: _tt_ra
+      failed_when: (_tt_ra.json.status | default('error')) != 'ok'
+      changed_when: true
+      loop: "{{ _tt_recs.results }}"
+      loop_control: {label: "{{ item.item.name }} -> {{ item.item.value }}"}
+      when: >-
+        item.item.value not in (item.json.response.records | default([])
+          | selectattr('type', 'equalto', item.item.type | default('A'))
+          | map(attribute='rData') | map(attribute='ipAddress') | list)
+
     - name: Fermeture de la session d'administration
       ansible.builtin.uri:
         url: "http://127.0.0.1:{{ technitium_web_port }}/api/user/logout"
