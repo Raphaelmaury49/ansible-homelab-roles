@@ -1,0 +1,202 @@
+---
+- name: Garde-fous
+  ansible.builtin.assert:
+    that:
+      - technitium_admin_password | length >= 16
+      - technitium_dns_sources | length > 0
+    fail_msg: "technitium_admin_password (>=16 car.) et technitium_dns_sources sont obligatoires"
+    quiet: true
+
+- name: Paquet ICU disponible (requis par .NET)
+  ansible.builtin.shell: apt-cache search --names-only '^libicu[0-9]+$' | awk '{print $1}' | sort -V | tail -1
+  register: _tt_icu
+  changed_when: false
+  check_mode: false
+
+- name: Dependances
+  ansible.builtin.apt:
+    name: [curl, ca-certificates, "{{ _tt_icu.stdout }}"]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Installation existante ?
+  ansible.builtin.stat:
+    path: "{{ technitium_install_dir }}/DnsServerApp.dll"
+  register: _tt_installed
+
+- name: Script d'installation officiel
+  ansible.builtin.get_url:
+    url: "{{ technitium_install_url }}"
+    dest: /root/technitium-install.sh
+    mode: "0700"
+  when: not _tt_installed.stat.exists
+
+- name: Installation (runtime .NET + service systemd non-root)
+  ansible.builtin.command: bash /root/technitium-install.sh
+  args:
+    creates: "{{ technitium_install_dir }}/DnsServerApp.dll"
+  register: _tt_install
+  when: not _tt_installed.stat.exists
+
+- name: Regles nftables
+  ansible.builtin.template:
+    src: technitium.nft.j2
+    dest: /etc/nftables.d/technitium.nft
+    mode: "0644"
+  notify: Reload nftables
+
+- name: Appliquer le pare-feu avant la suite
+  ansible.builtin.meta: flush_handlers
+
+- name: Console web joignable
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ technitium_web_port }}"
+    timeout: 120
+  when: not ansible_check_mode
+
+- name: Bloc API (session admin, mot de passe, token, reglages)
+  when: not ansible_check_mode
+  block:
+    - name: Connexion avec le mot de passe cible
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ technitium_web_port }}/api/user/login"
+        method: POST
+        body_format: form-urlencoded
+        body: {user: admin, pass: "{{ technitium_admin_password }}"}
+        return_content: true
+      register: _tt_login
+      no_log: true
+      failed_when: false
+
+    - name: Premier demarrage - connexion admin/admin puis changement du mot de passe
+      when: (_tt_login.json.status | default('error')) != 'ok'
+      block:
+        - name: Connexion avec le mot de passe par defaut
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:{{ technitium_web_port }}/api/user/login"
+            method: POST
+            body_format: form-urlencoded
+            body: {user: admin, pass: admin}
+            return_content: true
+          register: _tt_login_default
+          no_log: true
+          failed_when: (_tt_login_default.json.status | default('error')) != 'ok'
+
+        - name: Changement du mot de passe admin
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:{{ technitium_web_port }}/api/user/changePassword"
+            method: POST
+            headers: {Authorization: "Bearer {{ _tt_login_default.json.token }}"}
+            body_format: form-urlencoded
+            body:
+              pass: admin
+              newPass: "{{ technitium_admin_password }}"
+              iterations: "{{ technitium_admin_password_iterations }}"
+            return_content: true
+          register: _tt_chpw
+          no_log: true
+          failed_when: (_tt_chpw.json.status | default('error')) != 'ok'
+          changed_when: true
+
+        - name: Nouvelle session
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:{{ technitium_web_port }}/api/user/login"
+            method: POST
+            body_format: form-urlencoded
+            body: {user: admin, pass: "{{ technitium_admin_password }}"}
+            return_content: true
+          register: _tt_login
+          no_log: true
+          failed_when: (_tt_login.json.status | default('error')) != 'ok'
+
+    - name: Token API deja present sur le controleur ?
+      ansible.builtin.stat:
+        path: "{{ technitium_api_token_file }}"
+      delegate_to: localhost
+      become: false
+      register: _tt_tokfile
+
+    - name: Creation du token API non expirant
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ technitium_web_port }}/api/user/createToken"
+        method: POST
+        body_format: form-urlencoded
+        body: {user: admin, pass: "{{ technitium_admin_password }}", tokenName: "{{ technitium_api_token_name }}"}
+        return_content: true
+      register: _tt_token
+      no_log: true
+      failed_when: (_tt_token.json.status | default('error')) != 'ok'
+      changed_when: true
+      when: not _tt_tokfile.stat.exists
+
+    - name: Dossier du token sur le controleur
+      ansible.builtin.file:
+        path: "{{ technitium_api_token_file | dirname }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+      when: not _tt_tokfile.stat.exists
+
+    - name: Enregistrement du token sur le controleur (600)
+      ansible.builtin.copy:
+        content: "{{ _tt_token.json.token }}\n"
+        dest: "{{ technitium_api_token_file }}"
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+      no_log: true
+      when: not _tt_tokfile.stat.exists
+
+    - name: Lecture des reglages actuels
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ technitium_web_port }}/api/settings/get"
+        headers: {Authorization: "Bearer {{ _tt_login.json.token }}"}
+        return_content: true
+      register: _tt_current
+      no_log: true
+
+    - name: Comparaison valeur par valeur
+      ansible.builtin.set_fact:
+        _tt_changes: "{{ _tt_changes | default({}) | combine({item.key: item.value}) }}"
+      loop: "{{ technitium_settings | dict2items }}"
+      vars:
+        _cur: "{{ _tt_current.json.response[item.key] | default('__absent__') }}"
+        _cur_s: "{{ (_cur | join(',')) if (_cur is iterable and _cur is not string and _cur is not mapping) else (_cur | string) }}"
+        _want_s: "{{ (item.value | join(',')) if (item.value is iterable and item.value is not string and item.value is not mapping) else (item.value | string) }}"
+      when: (_cur_s | lower) != (_want_s | lower)
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Application des reglages
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ technitium_web_port }}/api/settings/set"
+        method: POST
+        headers: {Authorization: "Bearer {{ _tt_login.json.token }}"}
+        body_format: form-urlencoded
+        body: "{{ _tt_changes }}"
+        return_content: true
+      register: _tt_set
+      failed_when: (_tt_set.json.status | default('error')) != 'ok'
+      changed_when: true
+      when: _tt_changes | default({}) | length > 0
+
+    - name: Fermeture de la session d'administration
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ technitium_web_port }}/api/user/logout"
+        headers: {Authorization: "Bearer {{ _tt_login.json.token }}"}
+      no_log: true
+      failed_when: false
+
+- name: Test de resolution locale
+  ansible.builtin.command: "getent ahostsv4 debian.org"
+  changed_when: false
+  failed_when: false
+  register: _tt_resolve
+  when: not ansible_check_mode
+
+- name: Resume
+  ansible.builtin.debug:
+    msg: "Technitium pret : http://{{ ansible_default_ipv4.address }}:{{ technitium_web_port }} - token API : {{ technitium_api_token_file }}"
