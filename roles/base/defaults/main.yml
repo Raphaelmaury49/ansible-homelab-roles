@@ -24,9 +24,9 @@ base_auto_upgrades: true
 
 # Pare-feu (nftables, table inet filter dediee : ne touche pas aux tables Docker)
 base_firewall: true
-base_firewall_extra_rules: []
+base_firewall_extra_rules: []       # ex. [{port: 8080, proto: tcp, sources: ["10.0.0.0/24"]}]
 # Client DHCP : reponses (67 -> 68) acceptees uniquement depuis ces serveurs (vide = aucune regle)
-base_dhcp_servers: []       # ex. [{port: 8080, proto: tcp, sources: ["10.0.0.0/24"]}]
+base_dhcp_servers: []
 
 # Supervision
 base_node_exporter: true
