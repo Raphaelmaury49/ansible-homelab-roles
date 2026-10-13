@@ -10,9 +10,7 @@
 - name: IP du controleur (toujours autorisee en SSH pour ne pas se couper l'acces)
   ansible.builtin.set_fact:
     # calculee sur le controleur (ip route get) : SSH_CLIENT disparait sous sudo
-    _base_ctrl_ip: >-
-      {{ (lookup('ansible.builtin.pipe', 'ip -4 -o route get ' ~ (ansible_host | default(inventory_hostname)) ~ ' 2>/dev/null || true')
-          | regex_search('src (\\S+)', '\\1') | default([''], true) | first) }}
+    _base_ctrl_ip: "{{ lookup('ansible.builtin.pipe', role_path ~ '/files/ctrl_ip.sh ' ~ (ansible_host | default(inventory_hostname))) }}"
 
 - name: Paquets
   ansible.builtin.apt:
