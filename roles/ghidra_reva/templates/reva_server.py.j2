@@ -1,0 +1,33 @@
+# {{ ansible_managed }} (role ghidra_reva)
+# Ghidra headless + serveur MCP ReVa, projet persistant, ecoute 127.0.0.1 uniquement.
+import os, signal, sys, threading
+
+from pyghidra.launcher import HeadlessPyGhidraLauncher
+
+launcher = HeadlessPyGhidraLauncher(install_dir=os.environ["GHIDRA_INSTALL_DIR"])
+launcher.add_vmargs(*os.environ.get("REVA_VMARGS", "").split())
+launcher.start()
+
+from java.io import File                      # noqa: E402  (JVM demarree)
+from reva.headless import RevaHeadlessLauncher  # noqa: E402
+
+reva = RevaHeadlessLauncher(File(os.environ["REVA_CONFIG"]), False, False,
+                            File(os.environ["REVA_PROJECT_DIR"]), os.environ["REVA_PROJECT_NAME"],
+                            os.environ["REVA_API_KEY"])
+disabled = os.environ.get("REVA_DISABLED_TOOL_GROUPS", "").strip()
+if disabled:
+    reva.setDisabledToolGroups(disabled)
+reva.start()
+if not reva.waitForServer(180000):
+    print("ReVa n'a pas demarre dans les temps", file=sys.stderr, flush=True)
+    sys.exit(1)
+print(f"ReVa pret sur 127.0.0.1:{reva.getPort()} (groupes desactives : {disabled or 'aucun'})", flush=True)
+
+stop = threading.Event()
+for sig in (signal.SIGTERM, signal.SIGINT):
+    signal.signal(sig, lambda *_: stop.set())
+while not stop.wait(5):
+    if not reva.isRunning():
+        print("ReVa s'est arrete", file=sys.stderr, flush=True)
+        sys.exit(1)
+reva.stop()

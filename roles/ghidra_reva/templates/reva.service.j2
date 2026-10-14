@@ -1,0 +1,28 @@
+[Unit]
+Description=Ghidra headless + ReVa MCP ({{ ghidra_reva_name }})
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ ghidra_reva_user }}
+Group={{ ghidra_reva_user }}
+WorkingDirectory={{ ghidra_reva_data }}/home
+Environment=HOME={{ ghidra_reva_data }}/home
+EnvironmentFile={{ ghidra_reva_dir }}/.env
+# Verrou du projet laisse par un arret brutal (instance unique)
+ExecStartPre=-/bin/sh -c 'rm -f {{ ghidra_reva_data }}/projects/*.lock {{ ghidra_reva_data }}/projects/*.lock~'
+ExecStart={{ ghidra_reva_dir }}/venv/bin/python -u {{ ghidra_reva_dir }}/app/reva_server.py
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=60
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ ghidra_reva_data }}/home {{ ghidra_reva_data }}/projects
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

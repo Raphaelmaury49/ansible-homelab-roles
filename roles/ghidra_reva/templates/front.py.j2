@@ -1,0 +1,75 @@
+# {{ ansible_managed }} (role ghidra_reva)
+# Frontal MCP : verifie X-MCP-Key (gateway), relaie vers ReVa (127.0.0.1, X-API-Key)
+# et ajoute deux outils pour les echantillons deposes.
+import hashlib, os, subprocess
+from pathlib import Path
+
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+from fastmcp.server import create_proxy
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+
+KEY = os.environ["MCP_UPSTREAM_KEY"]
+HOST = os.environ.get("BIND_HOST", "127.0.0.1")
+PORT = int(os.environ.get("BIND_PORT", "{{ ghidra_reva_port }}"))
+SAMPLES = Path(os.environ["REVA_SAMPLES"]).resolve()
+UPSTREAM = f"http://127.0.0.1:{os.environ['REVA_INTERNAL_PORT']}/mcp/message"
+
+
+class KeyCheck(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.headers.get("x-mcp-key") != KEY:
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return await call_next(request)
+
+
+# Client explicite (et non un simple transport) : il negocie avec initialize, que le SDK Java de ReVa
+# comprend ; le proxy construit a partir d un transport tente server/discover (protocole 2026-07-28) -> 400.
+mcp = create_proxy(Client(StreamableHttpTransport(UPSTREAM, headers={"X-API-Key": os.environ["REVA_API_KEY"]}),
+                          timeout=1800),
+                   name="reva-{{ ghidra_reva_name }}")
+
+
+def _inside(p: Path) -> Path:
+    p = (SAMPLES / p).resolve() if not Path(p).is_absolute() else Path(p).resolve()
+    if p != SAMPLES and SAMPLES not in p.parents:
+        raise ValueError("chemin hors du dossier d'echantillons")
+    return p
+
+
+def _magic(p: Path) -> str:
+    r = subprocess.run(["file", "-b", "--", str(p)], capture_output=True, text=True, timeout=20)
+    return r.stdout.strip()[:200]
+
+
+@mcp.tool()
+def samples_list(subdir: str = "") -> dict:
+    """Liste les echantillons deposes (dossier Nextcloud 'Reverse', synchronise chaque minute).
+    Passer le champ 'path' a l'outil d'import de ReVa pour l'analyser. Aucun fichier n'est jamais execute."""
+    base = _inside(Path(subdir)) if subdir else SAMPLES
+    files = []
+    for p in sorted(base.rglob("*")):
+        if p.is_file():
+            st = p.stat()
+            files.append({"path": str(p), "size": st.st_size, "mtime": int(st.st_mtime), "type": _magic(p)})
+            if len(files) >= 500:
+                break
+    return {"dir": str(base), "count": len(files), "files": files}
+
+
+@mcp.tool()
+def sample_info(path: str) -> dict:
+    """Empreintes (md5, sha1, sha256), taille et type (libmagic) d'un echantillon, sans l'importer."""
+    p = _inside(Path(path))
+    h = {n: hashlib.new(n) for n in ("md5", "sha1", "sha256")}
+    with p.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            for x in h.values():
+                x.update(chunk)
+    return {"path": str(p), "size": p.stat().st_size, "type": _magic(p), **{n: x.hexdigest() for n, x in h.items()}}
+
+
+if __name__ == "__main__":
+    mcp.run(transport="http", host=HOST, port=PORT, path="/mcp", middleware=[Middleware(KeyCheck)])

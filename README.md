@@ -11,6 +11,7 @@ The roles hold **no infrastructure data**: every address, user and key comes fro
 | `base` | Admin account with exclusive SSH keys, sshd hardening (keys only, no root, `AllowUsers`), nftables default-drop with an anti-lockout guard, unattended upgrades, timezone (LXC-safe), node_exporter, qemu-guest-agent on VMs |
 | `mcp_shell` | Per-guest MCP server (FastMCP, streamable HTTP) exposing `run_command`, `read_file`, `write_file`, `system_info`. Reachable only from the gateway IP (nftables) **and** with a per-guest shared key (`X-MCP-Key`). Dedicated system user, sudo sessions recorded with `log_output`, every call logged to syslog (`mcp-shell-audit`) |
 | `technitium` | Technitium DNS Server via the official installer (.NET runtime, non-root systemd service), first-boot API bootstrap (admin password change, non-expiring API token stored on the controller), idempotent settings through `/api/settings/set`, nftables rules for DNS and the web console |
+| `ghidra_reva` | Headless Ghidra (official zip, sha256-pinned) + the [ReVa](https://github.com/cyberkaida/reverse-engineering-assistant) MCP extension built for that exact Ghidra version, running as a hardened systemd service on 127.0.0.1 with ReVa API-key auth and a persistent project. A FastMCP front checks `X-MCP-Key`, relays to ReVa and adds `samples_list` / `sample_info`. Scripting tool group disabled by default, samples dropped by `rsync` through `rrsync` (confined account), outbound connections to private ranges blocked. Static analysis only: no Wine, nothing is ever executed |
 
 ## Design notes
 

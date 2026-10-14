@@ -1,0 +1,205 @@
+---
+- name: Arborescence
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default(ghidra_reva_user) }}"
+    mode: "{{ item.mode | default('0750') }}"
+  loop:
+    - {path: "{{ ghidra_reva_dir }}"}
+    - {path: "{{ ghidra_reva_dir }}/app"}   # scripts hors de ghidra_reva_dir : le lien ghidra/ masquerait le paquet Java ghidra
+    - {path: "{{ ghidra_reva_dir }}/dl", group: root, mode: "0700"}
+    - {path: "{{ ghidra_reva_data }}", mode: "0755", group: root}
+    - {path: "{{ ghidra_reva_data }}/home", owner: "{{ ghidra_reva_user }}", mode: "0700"}
+    - {path: "{{ ghidra_reva_data }}/projects", owner: "{{ ghidra_reva_user }}", mode: "0700"}
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Ghidra (archive officielle, sha256 verifie)
+  ansible.builtin.get_url:
+    url: "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_{{ ghidra_reva_ghidra_version }}_build/ghidra_{{ ghidra_reva_ghidra_version }}_PUBLIC_{{ ghidra_reva_ghidra_build_date }}.zip"
+    dest: "{{ ghidra_reva_dir }}/dl/ghidra.zip"
+    checksum: "sha256:{{ ghidra_reva_ghidra_sha256 }}"
+    mode: "0600"
+    timeout: 600
+
+- name: Extraction de Ghidra
+  ansible.builtin.unarchive:
+    src: "{{ ghidra_reva_dir }}/dl/ghidra.zip"
+    dest: "{{ ghidra_reva_dir }}"
+    remote_src: true
+    creates: "{{ ghidra_reva_dir }}/ghidra_{{ ghidra_reva_ghidra_version }}_PUBLIC/ghidraRun"
+  notify: Restart reva
+
+- name: Lien ghidra -> version courante
+  ansible.builtin.file:
+    src: "{{ ghidra_reva_dir }}/ghidra_{{ ghidra_reva_ghidra_version }}_PUBLIC"
+    dest: "{{ ghidra_reva_dir }}/ghidra"
+    state: link
+  notify: Restart reva
+
+- name: Extension ReVa (build pour cette version de Ghidra, sha256 verifie)
+  ansible.builtin.get_url:
+    url: "https://github.com/cyberkaida/reverse-engineering-assistant/releases/download/v{{ ghidra_reva_version }}/ghidra_{{ ghidra_reva_ghidra_version }}_PUBLIC_{{ ghidra_reva_ext_build_date }}_reverse-engineering-assistant.zip"
+    dest: "{{ ghidra_reva_dir }}/dl/reva-{{ ghidra_reva_version }}.zip"
+    checksum: "sha256:{{ ghidra_reva_ext_sha256 }}"
+    mode: "0600"
+  register: _reva_ext
+
+- name: Installation de l'extension dans Ghidra/Extensions
+  ansible.builtin.unarchive:
+    src: "{{ ghidra_reva_dir }}/dl/reva-{{ ghidra_reva_version }}.zip"
+    dest: "{{ ghidra_reva_dir }}/ghidra/Ghidra/Extensions"
+    remote_src: true
+  when: _reva_ext.changed
+  notify: Restart reva
+
+- name: Wheel PyGhidra livree avec Ghidra
+  ansible.builtin.find:
+    paths: "{{ ghidra_reva_dir }}/ghidra/Ghidra/Features/PyGhidra/pypkg/dist"
+    patterns: "pyghidra-*.whl"
+  register: _pyghidra_whl
+
+- name: Venv (PyGhidra + FastMCP)
+  ansible.builtin.pip:
+    name: "{{ ghidra_reva_pip + [_pyghidra_whl.files[0].path] }}"
+    virtualenv: "{{ ghidra_reva_dir }}/venv"
+    virtualenv_command: python3 -m venv
+  notify: [Restart reva, Restart reva-mcp]
+
+- name: Configuration ReVa, lanceur, frontal, environnement
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ ghidra_reva_dir }}/{{ item.dest }}"
+    owner: root
+    group: "{{ ghidra_reva_user }}"
+    mode: "0640"
+  loop:
+    - {src: reva.properties.j2, dest: reva.properties}
+    - {src: reva_server.py.j2, dest: app/reva_server.py}
+    - {src: front.py.j2, dest: app/front.py}
+    - {src: env.j2, dest: .env}
+  loop_control:
+    label: "{{ item.dest }}"
+  no_log: "{{ item.dest == '.env' }}"
+  notify: [Restart reva, Restart reva-mcp]
+
+- name: Anciens emplacements des scripts
+  ansible.builtin.file:
+    path: "{{ ghidra_reva_dir }}/{{ item }}"
+    state: absent
+  loop: [reva_server.py, front.py]
+
+- name: Units systemd
+  ansible.builtin.template:
+    src: "{{ item }}.service.j2"
+    dest: "/etc/systemd/system/{{ item }}.service"
+    mode: "0644"
+  loop: [reva, reva-mcp]
+  notify: [Restart reva, Restart reva-mcp]
+
+# --- Depot d'echantillons (rsync confine par rrsync) ---
+- name: Compte de depot des echantillons
+  ansible.builtin.user:
+    name: "{{ ghidra_reva_samples_user }}"
+    system: true
+    shell: /bin/sh
+    group: "{{ ghidra_reva_user }}"
+    home: "{{ ghidra_reva_data }}/samples-home"
+    create_home: true
+    password: "!"
+  when: ghidra_reva_samples_push_keys | length > 0
+
+- name: Dossier des echantillons (lecture seule pour le service)
+  ansible.builtin.file:
+    path: "{{ ghidra_reva_data }}/samples"
+    state: directory
+    owner: "{{ ghidra_reva_samples_user if ghidra_reva_samples_push_keys else 'root' }}"
+    group: "{{ ghidra_reva_user }}"
+    mode: "2750"
+
+- name: Dossier .ssh du compte de depot
+  ansible.builtin.file:
+    path: "{{ ghidra_reva_data }}/samples-home/.ssh"
+    state: directory
+    owner: root
+    group: "{{ ghidra_reva_user }}"
+    mode: "0755"
+  when: ghidra_reva_samples_push_keys | length > 0
+
+- name: Cles autorisees (rrsync, aucune autre commande)
+  ansible.builtin.template:
+    src: samples_authorized_keys.j2
+    dest: "{{ ghidra_reva_data }}/samples-home/.ssh/authorized_keys"
+    owner: root
+    group: "{{ ghidra_reva_user }}"
+    mode: "0644"
+  when: ghidra_reva_samples_push_keys | length > 0
+
+- name: Regles nftables (incluses par le role base)
+  ansible.builtin.template:
+    src: reva.nft.j2
+    dest: /etc/nftables.d/reva.nft
+    mode: "0644"
+  notify: Reload nftables
+
+- name: Services actifs
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: [reva, reva-mcp]
+
+- name: Appliquer les handlers avant les tests
+  ansible.builtin.meta: flush_handlers
+
+- name: "Test 1 : ReVa ecoute sur 127.0.0.1:{{ ghidra_reva_internal_port }}"
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ ghidra_reva_internal_port }}"
+    timeout: 300
+
+- name: "Test 2 : ReVa refuse sans X-API-Key"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ ghidra_reva_internal_port }}/mcp/message"
+    method: POST
+    body_format: json
+    body: {}
+    status_code: 401
+
+- name: "Test 3 : frontal sans cle -> 401"
+  ansible.builtin.uri:
+    url: "http://{{ ghidra_reva_bind }}:{{ ghidra_reva_port }}/mcp"
+    method: POST
+    body_format: json
+    body: {}
+    status_code: 401
+  register: _t3
+  retries: 10
+  delay: 3
+  until: _t3.status == 401
+
+- name: "Test 4 : frontal avec cle -> initialize"
+  ansible.builtin.uri:
+    url: "http://{{ ghidra_reva_bind }}:{{ ghidra_reva_port }}/mcp"
+    method: POST
+    headers:
+      X-MCP-Key: "{{ ghidra_reva_upstream_key }}"
+      Accept: "application/json, text/event-stream"
+    body_format: json
+    body:
+      jsonrpc: "2.0"
+      id: 1
+      method: initialize
+      params:
+        protocolVersion: "2025-06-18"
+        capabilities: {}
+        clientInfo: {name: ansible-test, version: "1"}
+    status_code: 200
+  no_log: true
+
+- name: Resume
+  ansible.builtin.debug:
+    msg: "ReVa pret sur http://{{ ghidra_reva_bind }}:{{ ghidra_reva_port }}/mcp (cle : {{ ghidra_reva_key_file }}), echantillons : {{ ghidra_reva_data }}/samples"

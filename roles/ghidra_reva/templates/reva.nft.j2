@@ -1,0 +1,16 @@
+# {{ ansible_managed }} (role ghidra_reva)
+table inet filter {
+  chain input {
+    ip saddr { {{ ghidra_reva_allowed_src | join(', ') }} } tcp dport {{ ghidra_reva_port }} accept comment "reva-mcp"
+  }
+{% if ghidra_reva_restrict_lan_egress %}
+  chain output {
+    oif "lo" accept
+    ct state established,related accept
+{% if ghidra_reva_lan_egress_allow %}
+    ip daddr { {{ ghidra_reva_lan_egress_allow | join(', ') }} } accept comment "reva: egress LAN autorise"
+{% endif %}
+    ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } ct state new counter drop comment "reva: pas de connexion sortante vers le LAN"
+  }
+{% endif %}
+}

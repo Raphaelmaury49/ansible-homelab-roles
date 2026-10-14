@@ -1,0 +1,46 @@
+---
+# Versions (la build ReVa doit correspondre exactement a la version de Ghidra)
+ghidra_reva_ghidra_version: "12.1.3"
+ghidra_reva_ghidra_build_date: "20260817"
+ghidra_reva_ghidra_sha256: "93a5d11a9ad510622acaaf908c556a7b9b764d338e78a7567f3689bf5081fd54"
+ghidra_reva_version: "7.3.1"
+ghidra_reva_ext_build_date: "20260903"
+ghidra_reva_ext_sha256: "a87ce543a8835e5fe19282500bfc77f55b4bb32b3e18ff38c87ed44dd312cef5"
+ghidra_reva_java_package: openjdk-21-jdk-headless   # Ghidra 12 : JDK >= 21
+
+# Chemins et comptes
+ghidra_reva_user: reva
+ghidra_reva_dir: /opt/reva                 # Ghidra + venv + code
+ghidra_reva_data: /srv/reva                # projet Ghidra, echantillons, home du service
+ghidra_reva_project_name: homelab
+
+# Serveur ReVa interne (127.0.0.1, cle X-API-Key) et frontal MCP (cle X-MCP-Key)
+ghidra_reva_internal_port: 8080
+ghidra_reva_port: 8100
+ghidra_reva_bind: "{{ ansible_default_ipv4.address }}"
+ghidra_reva_allowed_src: []                # IP de la gateway MCP (OBLIGATOIRE)
+ghidra_reva_name: "{{ inventory_hostname }}"
+
+# Reglages ReVa / JVM
+ghidra_reva_heap: "{{ [((ansible_memtotal_mb * 0.6) | int), 1024] | max }}m"
+ghidra_reva_disabled_tool_groups: [scripting]   # pas d'execution de scripts Ghidra arbitraires
+ghidra_reva_decompiler_timeout: 60
+ghidra_reva_max_decompiler_search_functions: 1000
+ghidra_reva_import_analysis_timeout: 1800
+
+# Depot d'echantillons par rsync (rrsync, confine au dossier samples) ; vide = pas de compte de depot
+ghidra_reva_samples_user: samples
+ghidra_reva_samples_push_keys: []
+
+# Egress : interdit au guest d'ouvrir des connexions vers les reseaux prives (sauf liste)
+ghidra_reva_restrict_lan_egress: true
+ghidra_reva_lan_egress_allow: []           # ex. ["192.168.1.53"] (resolveur DNS)
+
+ghidra_reva_pip:
+  - fastmcp==4.0.3
+
+# Cles generees une fois sur le controleur (chmod 600)
+ghidra_reva_key_file: "{{ playbook_dir }}/../credentials/{{ inventory_hostname }}/mcp_shell_key"
+ghidra_reva_upstream_key: "{{ lookup('ansible.builtin.password', ghidra_reva_key_file ~ ' length=48 chars=ascii_letters,digits') }}"
+ghidra_reva_api_key_file: "{{ playbook_dir }}/../credentials/{{ inventory_hostname }}/reva_api_key"
+ghidra_reva_api_key: "{{ lookup('ansible.builtin.password', ghidra_reva_api_key_file ~ ' length=48 chars=ascii_letters,digits') }}"

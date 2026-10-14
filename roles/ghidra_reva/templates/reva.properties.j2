@@ -1,0 +1,10 @@
+# {{ ansible_managed }} (role ghidra_reva)
+# La cle API n'est pas ici : elle est passee au lanceur par l'environnement.
+reva.server.options.server.enabled=true
+reva.server.options.server.host=127.0.0.1
+reva.server.options.server.port={{ ghidra_reva_internal_port }}
+reva.server.options.api.key.authentication.enabled=true
+reva.server.options.debug.mode=false
+reva.server.options.decompiler.timeout.seconds={{ ghidra_reva_decompiler_timeout }}
+reva.server.options.max.decompiler.search.functions={{ ghidra_reva_max_decompiler_search_functions }}
+reva.server.options.import.analysis.timeout.seconds={{ ghidra_reva_import_analysis_timeout }}

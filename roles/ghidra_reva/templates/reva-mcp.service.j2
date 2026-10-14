@@ -1,0 +1,20 @@
+[Unit]
+Description=Frontal MCP ReVa ({{ ghidra_reva_name }})
+After=reva.service
+Wants=reva.service
+
+[Service]
+User={{ ghidra_reva_user }}
+Group={{ ghidra_reva_user }}
+WorkingDirectory={{ ghidra_reva_dir }}
+EnvironmentFile={{ ghidra_reva_dir }}/.env
+ExecStart={{ ghidra_reva_dir }}/venv/bin/python {{ ghidra_reva_dir }}/app/front.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

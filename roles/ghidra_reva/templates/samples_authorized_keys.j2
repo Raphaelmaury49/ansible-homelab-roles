@@ -1,0 +1,4 @@
+# {{ ansible_managed }} (role ghidra_reva) : depot rsync confine au dossier des echantillons
+{% for k in ghidra_reva_samples_push_keys %}
+command="/usr/bin/rrsync {{ ghidra_reva_data }}/samples",restrict {{ k }}
+{% endfor %}
