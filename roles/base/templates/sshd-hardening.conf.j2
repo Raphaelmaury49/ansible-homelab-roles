@@ -6,6 +6,6 @@ PubkeyAuthentication yes
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin {{ 'no' if base_disable_root_login else 'prohibit-password' }}
-AllowUsers {{ base_admin_user }}{{ '' if base_disable_root_login else ' root' }}
+AllowUsers {{ base_admin_user }}{{ '' if base_disable_root_login else ' root' }}{{ ([''] + base_ssh_extra_users) | join(' ') }}
 MaxAuthTries 3
 X11Forwarding no

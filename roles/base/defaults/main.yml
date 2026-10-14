@@ -9,6 +9,7 @@ base_admin_ssh_keys: []             # cles publiques autorisees (OBLIGATOIRE)
 base_ssh_port: 22
 base_ssh_allowed_sources: []        # CIDR autorisees en SSH (OBLIGATOIRE si base_firewall)
 base_disable_root_login: true
+base_ssh_extra_users: []           # comptes supplementaires autorises en SSH (ex. compte de depot rrsync)
 
 # Systeme
 base_timezone: Europe/Paris
