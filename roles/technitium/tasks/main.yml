@@ -254,6 +254,50 @@
           | selectattr('type', 'equalto', item.item.type | default('A'))
           | map(attribute='rData') | map(attribute='ipAddress') | list)
 
+    - name: SSO - configuration actuelle
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ technitium_web_port }}/api/admin/sso/get"
+        headers: {Authorization: "Bearer {{ _tt_token_session }}"}
+        return_content: true
+      register: _tt_sso
+      no_log: true
+      when: technitium_sso | length > 0
+
+    - name: SSO - application (OIDC)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ technitium_web_port }}/api/admin/sso/set"
+        method: POST
+        headers: {Authorization: "Bearer {{ _tt_token_session }}"}
+        body_format: form-urlencoded
+        body:
+          ssoEnabled: "{{ technitium_sso.enabled | default(true) | string | lower }}"
+          ssoAuthority: "{{ technitium_sso.authority }}"
+          ssoClientId: "{{ technitium_sso.client_id }}"
+          ssoClientSecret: "{{ lookup('ansible.builtin.file', technitium_sso.client_secret_file) }}"
+          ssoAllowSignup: "{{ technitium_sso.allow_signup | default(false) | string | lower }}"
+          ssoAllowSignupOnlyForMappedUsers: "{{ technitium_sso.allow_signup_only_mapped | default(true) | string | lower }}"
+          ssoScopes: "{{ technitium_sso.scopes | default(['openid', 'profile', 'email']) | join('|') }}"
+          ssoGroupMap: "{{ _tt_sso_want_map | join('|') }}"
+        return_content: true
+      register: _tt_sso_set
+      failed_when: (_tt_sso_set.json.status | default('error')) != 'ok'
+      changed_when: true
+      no_log: true
+      vars:
+        _r: "{{ _tt_sso.json.response }}"
+        _tt_sso_want_map: "{{ technitium_sso.group_map | default([]) | map(attribute='remote') | zip(technitium_sso.group_map | default([]) | map(attribute='local')) | map('join', '|') | list }}"
+        _tt_sso_cur_map: "{{ _r.ssoGroupMap | map(attribute='remoteGroup') | zip(_r.ssoGroupMap | map(attribute='localGroup')) | map('join', '|') | list }}"
+      when: >-
+        technitium_sso | length > 0 and (
+          technitium_sso_force
+          or (_r.ssoEnabled | bool) != (technitium_sso.enabled | default(true) | bool)
+          or (_r.ssoAuthority | default('', true)) != technitium_sso.authority
+          or (_r.ssoClientId | default('', true)) != technitium_sso.client_id
+          or (_r.ssoAllowSignup | bool) != (technitium_sso.allow_signup | default(false) | bool)
+          or (_r.ssoAllowSignupOnlyForMappedUsers | bool) != (technitium_sso.allow_signup_only_mapped | default(true) | bool)
+          or (_r.ssoScopes | sort) != (technitium_sso.scopes | default(['openid', 'profile', 'email']) | sort)
+          or (_tt_sso_cur_map | sort) != (_tt_sso_want_map | sort))
+
     - name: Fermeture de la session d'administration
       ansible.builtin.uri:
         url: "http://127.0.0.1:{{ technitium_web_port }}/api/user/logout"

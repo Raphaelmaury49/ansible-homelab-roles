@@ -23,3 +23,17 @@ technitium_settings: {}
 # (le reste du domaine parent continue d etre resolu en recursif). Ex. split-DNS / ZTNA :
 #   - {name: app.example.com, type: A, value: 10.0.0.10}
 technitium_local_records: []
+
+# SSO OpenID Connect (Technitium >= 15) ; {} = non gere par le role.
+# Le secret client n est jamais compare (l API le masque) : technitium_sso_force: true pour le re-pousser.
+#   technitium_sso:
+#     enabled: true
+#     authority: https://idp.example.com/application/o/dns/
+#     client_id: abc
+#     client_secret_file: "{{ playbook_dir }}/../credentials/dns/sso_client_secret"
+#     allow_signup: true
+#     allow_signup_only_mapped: true
+#     scopes: [openid, profile, email]
+#     group_map: [{remote: "IdP Admins", local: Administrators}]
+technitium_sso: {}
+technitium_sso_force: false
