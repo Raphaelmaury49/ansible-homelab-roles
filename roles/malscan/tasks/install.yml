@@ -47,6 +47,7 @@
     src: "{{ malscan_dir }}/app/malscan.py"
     dest: /usr/local/bin/malscan
     state: link
+    force: true
 
 - name: Venv (FastMCP)
   ansible.builtin.pip:
