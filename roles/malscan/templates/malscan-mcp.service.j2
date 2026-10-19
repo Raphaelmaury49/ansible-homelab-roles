@@ -1,0 +1,22 @@
+[Unit]
+Description=Serveur MCP malscan ({{ malscan_name }})
+After=network-online.target clamav-daemon.service
+Wants=clamav-daemon.service
+
+[Service]
+User={{ malscan_user }}
+Group={{ malscan_user }}
+SupplementaryGroups=reva clamav
+WorkingDirectory={{ malscan_dir }}/app
+EnvironmentFile={{ malscan_dir }}/.env
+ExecStart={{ malscan_dir }}/venv/bin/python {{ malscan_dir }}/app/malscan_server.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ malscan_data }}
+
+[Install]
+WantedBy=multi-user.target

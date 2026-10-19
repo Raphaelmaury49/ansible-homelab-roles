@@ -1,0 +1,23 @@
+---
+- name: Garde-fou
+  ansible.builtin.assert:
+    that: malscan_allowed_src | length > 0
+    fail_msg: "malscan_allowed_src est obligatoire (IP de la gateway MCP)"
+    quiet: true
+
+- name: Paquets moteurs (ClamAV, YARA, outils)
+  ansible.builtin.apt:
+    name:
+      - clamav
+      - clamav-daemon
+      - clamav-freshclam
+      - yara
+      - curl
+      - unzip
+      - file
+      - python3-venv
+    state: present
+    update_cache: true
+
+- name: Installation et tests
+  ansible.builtin.include_tasks: install.yml

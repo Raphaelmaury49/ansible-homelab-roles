@@ -1,0 +1,7 @@
+# {{ ansible_managed }} (role malscan)
+# Ouvre le port du frontal MCP depuis la gateway. L'egress est deja verrouille par reva.nft.
+table inet filter {
+  chain input {
+    ip saddr { {{ malscan_allowed_src | join(', ') }} } tcp dport {{ malscan_port }} accept comment "malscan-mcp"
+  }
+}
