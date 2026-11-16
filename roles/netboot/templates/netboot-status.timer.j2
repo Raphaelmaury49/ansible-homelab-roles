@@ -1,0 +1,11 @@
+# {{ ansible_managed }} (role netboot)
+[Unit]
+Description=Mise a jour de status.json (serveur PXE)
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

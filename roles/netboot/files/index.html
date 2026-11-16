@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Serveur PXE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wdth,wght@75..112.5,300..700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --fw:#0c1d63;      /* bleu firmware */
+  --fw-2:#13297f;
+  --fw-line:#2a43a6;
+  --ink:#eef1fa;
+  --muted:#9eabdb;
+  --amber:#ffb547;
+  --ok:#7fe0a8;
+  --bad:#ff7a6b;
+  --crt:#06070b;
+  --crt-ink:#c9cfdc;
+  --mono:"Martian Mono",ui-monospace,monospace;
+  --sans:"Instrument Sans",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{background:var(--fw);color:var(--ink)}
+body{margin:0;font:400 16px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:var(--amber)}
+:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 24px 64px}
+
+/* en-tete */
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px 28px;margin-bottom:28px}
+h1{font:600 clamp(40px,6vw,72px)/1 var(--mono);font-variation-settings:"wdth" 75;letter-spacing:-.02em;margin:0}
+h1 span{color:var(--muted);font-weight:300}
+.host{font:400 14px var(--mono);color:var(--muted)}
+.svc{display:flex;gap:18px;margin-left:auto;font:400 13px var(--mono)}
+.svc b{font-weight:400;display:inline-flex;align-items:center;gap:7px}
+.svc i{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}
+.svc i.on{background:var(--ok);box-shadow:0 0 0 3px rgba(127,224,168,.18)}
+.svc i.off{background:var(--bad)}
+
+/* ecran */
+.hero{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:28px;align-items:start}
+.bezel{background:#1b1f2c;border-radius:18px;padding:18px 18px 14px;border:1px solid #2b3145}
+.screen{background:var(--crt);color:var(--crt-ink);border-radius:8px;min-height:390px;padding:22px 24px;
+  font:400 14px/1.75 var(--mono);font-variation-settings:"wdth" 87.5;overflow:hidden;position:relative}
+.screen::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(transparent 0 2px,rgba(255,255,255,.025) 2px 3px)}
+.bezel-foot{display:flex;justify-content:space-between;margin-top:10px;font:400 12px var(--mono);color:#7d849c}
+.boot-line{white-space:pre;color:#8e95a8}
+.boot-line .okw{color:var(--ok)}
+.m-title{color:#fff;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-gap{color:#6c7488;margin-top:6px}
+.m-item{display:block;width:100%;text-align:left;background:none;border:0;color:inherit;font:inherit;
+  padding:0 10px;margin:0 -10px;cursor:pointer;border-radius:2px}
+.m-item:hover{background:#1a1d27}
+.m-item[aria-current="true"]{background:var(--amber);color:#1a1200}
+.m-timer{position:absolute;right:24px;bottom:16px;color:#6c7488}
+.hint{color:#6c7488;margin-top:14px}
+
+.aside h2,.sec h2{font:600 22px/1.2 var(--mono);font-variation-settings:"wdth" 87.5;margin:0 0 12px}
+.aside p{margin:0 0 14px;color:var(--ink);max-width:46ch}
+.aside .what{font:500 13px var(--mono);color:var(--amber);margin-bottom:6px}
+.aside code,.sec code{font:400 13px var(--mono);background:var(--fw-2);padding:2px 6px;border-radius:4px}
+
+/* sections */
+.sec{margin-top:56px}
+.sec > p{color:var(--muted);margin:-4px 0 18px;max-width:70ch}
+.chain{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--fw-line)}
+.step{padding:16px 18px 0 0}
+.step .n{font:600 13px var(--mono);color:var(--amber)}
+.step h3{font:500 17px/1.3 var(--sans);margin:4px 0 6px}
+.step p{margin:0;color:var(--muted);font-size:14px}
+.step code{display:inline-block;margin-top:6px}
+
+table{width:100%;border-collapse:collapse;font-size:15px}
+th{font:500 12px var(--mono);color:var(--muted);text-align:left;padding:0 12px 8px 0;border-bottom:1px solid var(--fw-line)}
+td{padding:11px 12px 11px 0;border-bottom:1px solid rgba(42,67,166,.45);vertical-align:top}
+td.num,th.num{text-align:right;font-family:var(--mono);font-size:13px;white-space:nowrap}
+td.ago{text-align:right;white-space:nowrap;color:var(--muted);font-size:14px}
+.note{color:var(--muted);font-size:14px}
+td.mono{font:400 13px var(--mono)}
+.tag{font:500 11px var(--mono);padding:2px 7px;border-radius:999px;border:1px solid var(--fw-line);color:var(--muted);white-space:nowrap}
+.tag.uefi{border-color:#5c7cff;color:#b9c7ff}
+.tag.bios{border-color:#8a6a2a;color:var(--amber)}
+.empty{padding:22px;border:1px dashed var(--fw-line);border-radius:10px;color:var(--muted)}
+
+.two{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:40px}
+.disk{height:10px;background:var(--fw-2);border-radius:999px;overflow:hidden;margin:6px 0 4px}
+.disk > i{display:block;height:100%;background:var(--amber);width:0}
+.small{font:400 13px var(--mono);color:var(--muted)}
+.cmd{display:flex;gap:10px;align-items:stretch;margin-top:10px}
+.cmd pre{flex:1;margin:0;background:var(--crt);color:var(--crt-ink);padding:12px 14px;border-radius:8px;
+  font:400 12.5px/1.5 var(--mono);white-space:pre-wrap;word-break:break-all}
+.btn{font:500 13px var(--sans);background:var(--amber);color:#1a1200;border:0;border-radius:8px;padding:0 14px;cursor:pointer}
+.btn:active{transform:translateY(1px)}
+footer{margin-top:64px;color:var(--muted);font:400 12px var(--mono)}
+
+@media (max-width:900px){
+  .hero,.two{grid-template-columns:1fr}
+  .chain{grid-template-columns:1fr 1fr;gap:0 18px}
+  .svc{margin-left:0}
+}
+@media (max-width:560px){ .chain{grid-template-columns:1fr} .screen{font-size:12.5px;padding:16px} .col-date{display:none} }
+@media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>pxe<span>.boot</span></h1>
+  <div class="host" id="host">…</div>
+  <div class="svc" aria-label="Etat des services">
+    <b><i id="s-dnsmasq"></i>proxyDHCP + TFTP</b>
+    <b><i id="s-nginx"></i>HTTP</b>
+  </div>
+</header>
+
+<section class="hero">
+  <div>
+    <div class="bezel">
+      <div class="screen" id="screen" aria-live="polite"></div>
+      <div class="bezel-foot"><span>Aperçu du menu tel qu'il s'affiche au démarrage</span><span id="platform">efi x86_64</span></div>
+    </div>
+  </div>
+  <div class="aside">
+    <h2>Ce que fait cette entrée</h2>
+    <div class="what" id="what-key">—</div>
+    <p id="what-text">Cliquez sur une ligne du menu, ou utilisez les flèches du clavier.</p>
+    <p class="note" id="what-extra"></p>
+  </div>
+</section>
+
+<section class="sec">
+  <h2>Déroulé d'un démarrage réseau</h2>
+  <p>Le DHCP du réseau ne change pas : ce serveur répond en plus, uniquement aux machines qui démarrent en PXE, sans jamais attribuer d'adresse.</p>
+  <div class="chain">
+    <div class="step"><div class="n">1</div><h3>Le firmware demande une adresse</h3><p>Le DHCP habituel lui donne son IP ; ce serveur ajoute quoi charger et où.</p></div>
+    <div class="step"><div class="n">2</div><h3>Chargement d'iPXE en TFTP</h3><p>Le fichier dépend du firmware.</p><code>undionly.kpxe</code> <code>snponly.efi</code></div>
+    <div class="step"><div class="n">3</div><h3>Menu récupéré en HTTP</h3><p>iPXE réutilise l'adresse du firmware et télécharge le menu.</p><code>/menu.ipxe</code></div>
+    <div class="step"><div class="n">4</div><h3>Démarrage du choix</h3><p>netboot.xyz en ligne, une ISO locale, ou le disque de la machine.</p></div>
+  </div>
+</section>
+
+<section class="sec two">
+  <div>
+    <h2>ISOs locales</h2>
+    <p class="small" id="iso-count"></p>
+    <div id="isos"></div>
+  </div>
+  <div>
+    <h2>Ajouter une ISO</h2>
+    <p class="small">Le menu se met à jour automatiquement dès que le fichier est en place.</p>
+    <div class="disk" aria-hidden="true"><i id="disk-bar"></i></div>
+    <div class="small" id="disk-txt"></div>
+    <div class="cmd"><pre id="cmd-add"></pre><button class="btn" data-copy="cmd-add">Copier</button></div>
+    <div class="cmd"><pre id="cmd-scp"></pre><button class="btn" data-copy="cmd-scp">Copier</button></div>
+  </div>
+</section>
+
+<section class="sec">
+  <h2>Derniers démarrages</h2>
+  <p>Machines vues ces dernières 24 heures, avec l'étape la plus loin atteinte.</p>
+  <div id="boots"></div>
+</section>
+
+<footer id="foot"></footer>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtSize=b=>{const u=['o','Ko','Mo','Go','To'];let i=0;while(b>=1024&&i<4){b/=1024;i++}return (i?b.toFixed(1):b)+' '+u[i]};
+const fmtDate=d=>new Date(d).toLocaleString('fr-FR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+const ago=t=>{const s=(Date.now()-new Date(t))/1000;if(s<90)return "à l'instant";if(s<3600)return 'il y a '+Math.round(s/60)+' min';return 'il y a '+Math.round(s/3600)+' h'};
+
+const HELP={
+  netbootxyz:['netboot.xyz','Ouvre le menu en ligne de netboot.xyz : installeurs Linux et BSD, live CD, outils de dépannage. Les fichiers sont téléchargés depuis Internet au moment du choix.','Nécessite un accès Internet depuis la machine qui démarre.'],
+  isos:['ISOs locales','Liste les images déposées sur ce serveur et les démarre sans Internet.','UEFI : montage par sanboot. BIOS : sanboot ou chargement complet en mémoire (memdisk). Certains installeurs ne retrouvent pas leur média par cette méthode : préférez netboot.xyz pour eux.'],
+  local:['Disque local','Rend la main au firmware, qui démarre sur le disque de la machine.','Entrée par défaut à la fin du compte à rebours : un PC réglé en PXE en premier ne se réinstalle jamais par accident.'],
+  shell:['Shell iPXE','Ligne de commande iPXE pour diagnostiquer : ifstat, route, ping, chain …','Tapez exit pour revenir au menu.'],
+  reboot:['Redémarrer','Redémarre immédiatement la machine.',''],
+  poweroff:['Eteindre','Eteint la machine.','']
+};
+
+let menu={title:'',items:[],def:'local',timeout:15},sel=0,isos=[],view='main',timer=null,left=0;
+
+function parseMenu(t){
+  const m={title:'',items:[],def:'local',timeout:15};
+  for(const raw of t.split('\n')){
+    const l=raw.trim();
+    if(l.startsWith('menu '))m.title=l.slice(5);
+    else if(l.startsWith('item --gap'))m.items.push({gap:l.replace(/^item --gap(\s+--)?\s*/,'')});
+    else if(l.startsWith('item ')){const p=l.slice(5).trim();const k=p.split(/\s+/)[0];m.items.push({key:k,label:p.slice(k.length).trim()})}
+    else if(l.startsWith('choose ')){const d=l.match(/--default\s+(\S+)/),to=l.match(/--timeout\s+(\d+)/);if(d)m.def=d[1];if(to)m.timeout=+to[1]/1000}
+  }
+  return m;
+}
+const selectable=()=>currentItems().filter(i=>!i.gap);
+function currentItems(){
+  if(view==='main')return menu.items;
+  const it=[{gap:''}];
+  if(!isos.length)it.push({gap:'Aucune ISO : déposez des .iso dans le dossier du serveur'});
+  isos.forEach((f,i)=>it.push({key:'iso'+i,label:f.name+' ('+fmtSize(f.size)+')',iso:f}));
+  it.push({gap:''},{key:'back',label:'<- Retour au menu principal'});
+  return it;
+}
+function draw(){
+  const items=currentItems(),sels=selectable();
+  const title=view==='main'?menu.title.replace('${platform}','efi').replace('${buildarch}','x86_64').replace('${ip}',(window.SRV||'x.x.x.x').replace(/\.\d+$/,'.x')):'ISOs locales - efi';
+  let h='<div class="m-title">'+esc(title)+'</div>';
+  items.forEach(i=>{
+    if(i.gap!==undefined){h+='<div class="m-gap">'+esc(i.gap)+'&nbsp;</div>';return}
+    const idx=sels.indexOf(i);
+    h+='<button class="m-item" data-i="'+idx+'" aria-current="'+(idx===sel)+'">'+esc(i.label)+'</button>';
+  });
+  if(view==='main'&&left>0)h+='<div class="m-timer">'+left+' s</div>';
+  $('#screen').innerHTML=h;
+  $('#screen').querySelectorAll('.m-item').forEach(b=>b.onclick=()=>{stopTimer();if(sel===+b.dataset.i)enter();else{sel=+b.dataset.i;draw();explain()}});
+}
+function explain(){
+  const it=selectable()[sel];if(!it)return;
+  let k,t,x;
+  if(it.iso){k=it.iso.name;t='Démarre cette image depuis le serveur, sans Internet.';x='Ajoutée le '+fmtDate(it.iso.mtime)+' · '+fmtSize(it.iso.size)}
+  else if(it.key==='back'){k='Retour';t='Revient au menu principal.';x=''}
+  else [k,t,x]=HELP[it.key]||[it.label,'Entrée personnalisée définie dans la configuration Ansible du serveur.',''];
+  $('#what-key').textContent=k;$('#what-text').textContent=t;$('#what-extra').textContent=x;
+}
+function enter(){
+  const it=selectable()[sel];
+  if(view==='main'&&it.key==='isos'){view='isos';sel=selectable().length-1;draw();explain()}
+  else if(view==='isos'&&it.key==='back'){view='main';sel=selectable().findIndex(i=>i.key==='isos');draw();explain()}
+}
+function stopTimer(){if(timer){clearInterval(timer);timer=null;left=0;draw()}}
+document.addEventListener('keydown',e=>{
+  if(!['ArrowUp','ArrowDown','Enter'].includes(e.key)||e.target.closest('input,textarea'))return;
+  if(!$('#screen').contains(document.activeElement)&&document.activeElement!==document.body)return;
+  e.preventDefault();stopTimer();const n=selectable().length;
+  if(e.key==='ArrowUp')sel=(sel-1+n)%n;else if(e.key==='ArrowDown')sel=(sel+1)%n;else enter();
+  draw();explain();
+});
+
+async function bootAnim(){
+  const lines=[['iPXE initialising devices...',' ok'],['Configuring (net0) ...',' ok'],['menu.ipxe...',' ok']];
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduce)return;
+  const s=$('#screen');
+  for(const [a,b] of lines){
+    const d=document.createElement('div');d.className='boot-line';s.appendChild(d);
+    for(const ch of a){d.textContent+=ch;await new Promise(r=>setTimeout(r,12))}
+    await new Promise(r=>setTimeout(r,180));d.innerHTML=esc(a)+'<span class="okw">'+b+'</span>';
+  }
+  await new Promise(r=>setTimeout(r,350));
+}
+
+async function load(){
+  const [mt,st,iso]=await Promise.all([
+    fetch('/menu.ipxe',{cache:'no-store'}).then(r=>r.text()).catch(()=>''),
+    fetch('/status.json',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+    fetch('/api/iso/',{cache:'no-store'}).then(r=>r.json()).catch(()=>[])
+  ]);
+  isos=iso.filter(f=>f.type==='file'&&/\.iso$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));
+  return {mt,st};
+}
+
+function renderStatus(st){
+  if(!st)return;
+  window.SRV=st.server_ip;$('#host').textContent=st.server_ip+' · CT '+st.hostname;
+  for(const s of ['dnsmasq','nginx']){const i=$('#s-'+s);i.className=st.services[s]==='active'?'on':'off';i.title=st.services[s]}
+  const d=st.disk;$('#disk-bar').style.width=Math.min(100,d.used/d.total*100).toFixed(1)+'%';
+  $('#disk-txt').textContent=fmtSize(d.used)+' utilisés sur '+fmtSize(d.total);
+  $('#cmd-add').textContent="ssh admin@"+st.server_ip+" 'netboot-iso-add https://exemple.org/image.iso'";
+  $('#cmd-scp').textContent="scp image.iso admin@"+st.server_ip+":"+st.iso_dir+"/";
+  $('#foot').textContent='iPXE '+st.ipxe_version+' · netboot.xyz '+st.netbootxyz_version+' · état mis à jour '+ago(st.generated);
+  const b=st.boots||[];
+  if(!b.length){$('#boots').innerHTML='<div class="empty">Aucune machine n\'a démarré sur le réseau depuis 24 heures. Mettez une machine en boot PXE pour la voir apparaître ici.</div>';return}
+  $('#boots').innerHTML='<table><thead><tr><th>Machine</th><th>Firmware</th><th>Etape atteinte</th><th class="num">Vu</th></tr></thead><tbody>'+
+    b.map(x=>'<tr><td>'+esc(x.name||x.ip)+'<div class="small">'+(x.name?esc(x.ip)+'<br>':'')+esc(x.mac||'')+'</div></td><td><span class="tag '+(x.firmware==='UEFI'?'uefi':'bios')+'">'+esc(x.firmware||'?')+'</span></td><td>'+esc(x.stage)+'</td><td class="ago">'+ago(x.last)+'</td></tr>').join('')+'</tbody></table>';
+}
+function renderIsos(){
+  $('#iso-count').textContent=isos.length?isos.length+' image'+(isos.length>1?'s':'')+' disponible'+(isos.length>1?'s':''):'';
+  $('#isos').innerHTML=isos.length?'<table><thead><tr><th>Fichier</th><th class="num">Taille</th><th class="num col-date">Ajoutée</th></tr></thead><tbody>'+
+    isos.map(f=>'<tr><td><a href="/iso/'+encodeURIComponent(f.name)+'">'+esc(f.name)+'</a></td><td class="num">'+fmtSize(f.size)+'</td><td class="num col-date">'+fmtDate(f.mtime)+'</td></tr>').join('')+'</tbody></table>'
+    :'<div class="empty">Aucune ISO pour l\'instant. Ajoutez-en une avec l\'une des commandes ci-contre.</div>';
+}
+
+document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{
+  await navigator.clipboard.writeText($('#'+b.dataset.copy).textContent);
+  const t=b.textContent;b.textContent='Copié';setTimeout(()=>b.textContent=t,1400);
+});
+
+(async()=>{
+  const data=load();
+  await bootAnim();
+  const {mt,st}=await data;
+  menu=parseMenu(mt);
+  renderStatus(st);renderIsos();
+  sel=Math.max(0,selectable().findIndex(i=>i.key===menu.def));
+  left=menu.timeout;draw();explain();
+  timer=setInterval(()=>{left--;if(left<=0){clearInterval(timer);timer=null;left=0}draw()},1000);
+  setInterval(async()=>{const s=await fetch('/status.json',{cache:'no-store'}).then(r=>r.json()).catch(()=>null);renderStatus(s)},30000);
+})();
+</script>
+</body>
+</html>

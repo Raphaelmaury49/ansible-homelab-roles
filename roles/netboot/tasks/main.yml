@@ -154,6 +154,34 @@
     daemon_reload: true
   when: not ansible_check_mode
 
+# ---------- page web ----------
+- name: Page web (aperçu du menu, ISOs, derniers démarrages)
+  ansible.builtin.copy:
+    src: index.html
+    dest: "{{ netboot_http_dir }}/index.html"
+    mode: "0644"
+
+- name: Générateur de status.json
+  ansible.builtin.template:
+    src: netboot-status.j2
+    dest: /usr/local/sbin/netboot-status
+    mode: "0755"
+
+- name: Unités systemd de status.json
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop: [netboot-status.service, netboot-status.timer]
+
+- name: Activer la mise à jour de status.json
+  ansible.builtin.systemd_service:
+    name: netboot-status.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+
 # ---------- services ----------
 - name: dnsmasq (proxyDHCP + TFTP)
   ansible.builtin.template:

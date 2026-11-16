@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+# {{ ansible_managed }} (role netboot)
+# Genere {{ netboot_http_dir }}/status.json pour la page web : services, disque, derniers boots (24 h).
+import datetime, json, os, re, shutil, socket, subprocess
+
+OUT = "{{ netboot_http_dir }}/status.json"
+ISO_DIR = "{{ netboot_iso_dir }}"
+NGINX_LOG = "/var/log/nginx/access.log"
+socket.setdefaulttimeout(1)
+
+
+def sh(*a):
+    try:
+        return subprocess.run(a, capture_output=True, text=True, timeout=20).stdout
+    except Exception:
+        return ""
+
+
+boots = {}  # ip -> dict
+
+
+def touch(ip, ts, **kw):
+    b = boots.setdefault(ip, {"ip": ip, "last": ts, "rank": 0})
+    if ts > b["last"]:
+        b["last"] = ts
+    for k, v in kw.items():
+        if k == "stage":
+            rank, label = v
+            if rank >= b["rank"]:
+                b["rank"], b["stage"] = rank, label
+        elif v:
+            b[k] = v
+
+
+# dnsmasq : reponses PXE (ip, mac, binaire) et envois TFTP
+pxe_re = re.compile(r"PXE\(\w+\) (\d+\.\d+\.\d+\.\d+) ([0-9a-f:]{17}) (\S+)")
+tftp_re = re.compile(r"sent \S+/(\S+) to (\d+\.\d+\.\d+\.\d+)")
+for line in sh("journalctl", "-u", "dnsmasq", "--since", "-24h", "-o", "short-iso", "--no-pager").splitlines():
+    ts = line.split(" ", 1)[0]
+    m = pxe_re.search(line)
+    if m:
+        ip, mac, f = m.groups()
+        fw = "UEFI" if f.endswith(".efi") else "BIOS"
+        touch(ip, ts, mac=mac, firmware=fw, stage=(1, "Proposition PXE reçue"))
+        continue
+    m = tftp_re.search(line)
+    if m:
+        f, ip = m.groups()
+        fw = "UEFI" if f.endswith(".efi") else "BIOS"
+        touch(ip, ts, firmware=fw, stage=(2, "iPXE chargé (TFTP)"))
+
+# nginx : menu, choix
+log_re = re.compile(r'^(\S+) \S+ \S+ \[([^\]]+)\] "GET (\S+)[^"]*" (\d+)')
+since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=24)
+try:
+    with open(NGINX_LOG, errors="replace") as fh:
+        for line in fh:
+            m = log_re.match(line)
+            if not m or "iPXE" not in line:
+                continue
+            ip, d, path, code = m.groups()
+            t = datetime.datetime.strptime(d, "%d/%b/%Y:%H:%M:%S %z")
+            if t < since:
+                continue
+            ts = t.isoformat()
+            if path == "/menu.ipxe":
+                touch(ip, ts, stage=(3, "Menu affiché"))
+            elif path == "/iso.ipxe":
+                touch(ip, ts, stage=(4, "Menu des ISOs ouvert"))
+            elif path.startswith("/netboot.xyz"):
+                touch(ip, ts, stage=(5, "netboot.xyz lancé"))
+            elif path.startswith("/iso/"):
+                name = path[5:].replace("%20", " ")
+                touch(ip, ts, stage=(6, "ISO démarrée : " + name))
+except OSError:
+    pass
+
+for b in boots.values():
+    try:
+        b["name"] = socket.gethostbyaddr(b["ip"])[0].split(".")[0]
+    except Exception:
+        b["name"] = ""
+    b.pop("rank", None)
+    b.setdefault("stage", "")
+
+du = shutil.disk_usage(ISO_DIR)
+status = {
+    "generated": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "hostname": socket.gethostname(),
+    "server_ip": "{{ netboot_server_ip }}",
+    "iso_dir": ISO_DIR,
+    "ipxe_version": "{{ netboot_ipxe_version }}",
+    "netbootxyz_version": "{{ netboot_xyz_version }}",
+    "services": {s: sh("systemctl", "is-active", s).strip() for s in ("dnsmasq", "nginx")},
+    "disk": {"total": du.total, "used": du.used},
+    "boots": sorted(boots.values(), key=lambda b: b["last"], reverse=True)[:30],
+}
+tmp = OUT + ".tmp"
+with open(tmp, "w") as fh:
+    json.dump(status, fh, ensure_ascii=False)
+os.chmod(tmp, 0o644)
+os.replace(tmp, OUT)
