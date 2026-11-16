@@ -1,0 +1,199 @@
+---
+- name: Verifier les variables obligatoires
+  ansible.builtin.assert:
+    that:
+      - netboot_proxy_network | length > 0
+    fail_msg: "netboot_proxy_network est obligatoire (ex. 10.0.0.0)"
+
+- name: Paquets
+  ansible.builtin.apt:
+    name:
+      - dnsmasq
+      - nginx
+      - syslinux-common
+      - git
+      - build-essential
+      - liblzma-dev
+      - perl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Arborescence
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ netboot_root }}"
+    - "{{ netboot_tftp_dir }}"
+    - "{{ netboot_http_dir }}"
+    - /etc/netboot
+
+- name: Dossier des ISOs (depot par le compte admin)
+  ansible.builtin.file:
+    path: "{{ netboot_iso_dir }}"
+    state: directory
+    owner: "{{ netboot_iso_owner }}"
+    group: "{{ netboot_iso_owner }}"
+    mode: "2775"
+
+# ---------- iPXE ----------
+- name: Sources iPXE
+  ansible.builtin.git:
+    repo: "{{ netboot_ipxe_repo }}"
+    dest: "{{ netboot_ipxe_src }}"
+    version: "{{ netboot_ipxe_version }}"
+    depth: 1
+    force: false
+  register: _netboot_ipxe_git
+
+- name: Script embarque iPXE
+  ansible.builtin.template:
+    src: embed.ipxe.j2
+    dest: /etc/netboot/embed.ipxe
+    mode: "0644"
+  register: _netboot_embed
+
+- name: Options de compilation iPXE
+  ansible.builtin.template:
+    src: general.h.j2
+    dest: "{{ netboot_ipxe_src }}/src/config/local/general.h"
+    mode: "0644"
+  register: _netboot_general
+
+- name: Binaires iPXE deja presents ?
+  ansible.builtin.stat:
+    path: "{{ netboot_tftp_dir }}/snponly.efi"
+  register: _netboot_bin
+
+- name: Compiler iPXE (BIOS undionly + UEFI snponly/ipxe)
+  ansible.builtin.command:
+    cmd: >-
+      make -C {{ netboot_ipxe_src }}/src -j{{ netboot_ipxe_jobs }} NO_WERROR=1
+      EMBED=/etc/netboot/embed.ipxe
+      bin/undionly.kpxe bin-x86_64-efi/snponly.efi bin-x86_64-efi/ipxe.efi
+  when: >-
+    _netboot_ipxe_git.changed or _netboot_embed.changed or _netboot_general.changed
+    or not _netboot_bin.stat.exists
+  register: _netboot_build
+  changed_when: true
+
+- name: Installer les binaires iPXE dans le TFTP
+  ansible.builtin.copy:
+    src: "{{ netboot_ipxe_src }}/src/{{ item.src }}"
+    dest: "{{ netboot_tftp_dir }}/{{ item.dest }}"
+    remote_src: true
+    mode: "0644"
+  loop:
+    - {src: bin/undionly.kpxe, dest: undionly.kpxe}
+    - {src: bin-x86_64-efi/snponly.efi, dest: snponly.efi}
+    - {src: bin-x86_64-efi/ipxe.efi, dest: ipxe.efi}
+  when: not ansible_check_mode or _netboot_bin.stat.exists
+
+# dnsmasq ajoute .0 aux noms sans extension pour x86PC : alias par precaution
+- name: Alias .0 des binaires
+  ansible.builtin.file:
+    src: "{{ item }}"
+    dest: "{{ netboot_tftp_dir }}/{{ item }}.0"
+    state: link
+    force: true
+  loop: [undionly.kpxe, snponly.efi]
+  when: not ansible_check_mode
+
+# ---------- contenu HTTP ----------
+- name: netboot.xyz
+  ansible.builtin.get_url:
+    url: "https://github.com/netbootxyz/netboot.xyz/releases/download/{{ netboot_xyz_version }}/{{ item }}"
+    dest: "{{ netboot_http_dir }}/{{ item }}"
+    mode: "0644"
+  loop: "{{ netboot_xyz_files }}"
+
+- name: memdisk (boot d'ISO en RAM, BIOS)
+  ansible.builtin.copy:
+    src: /usr/lib/syslinux/memdisk
+    dest: "{{ netboot_http_dir }}/memdisk"
+    remote_src: true
+    mode: "0644"
+  when: not ansible_check_mode
+
+- name: Menu principal
+  ansible.builtin.template:
+    src: menu.ipxe.j2
+    dest: "{{ netboot_http_dir }}/menu.ipxe"
+    mode: "0644"
+
+- name: Generateur du menu des ISOs
+  ansible.builtin.template:
+    src: netboot-menu-gen.j2
+    dest: /usr/local/sbin/netboot-menu-gen
+    mode: "0755"
+  notify: Regenerer le menu des ISOs
+
+- name: Outil d'ajout d'ISO par URL
+  ansible.builtin.template:
+    src: netboot-iso-add.j2
+    dest: /usr/local/bin/netboot-iso-add
+    mode: "0755"
+
+- name: Unites systemd (regeneration auto du menu quand le dossier ISO change)
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop: [netboot-menu.service, netboot-menu.path]
+  notify: Regenerer le menu des ISOs
+
+- name: Activer la surveillance du dossier ISO
+  ansible.builtin.systemd_service:
+    name: netboot-menu.path
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+
+# ---------- services ----------
+- name: dnsmasq (proxyDHCP + TFTP)
+  ansible.builtin.template:
+    src: dnsmasq-netboot.conf.j2
+    dest: /etc/dnsmasq.d/netboot.conf
+    mode: "0644"
+  notify: Redemarrer dnsmasq
+
+- name: nginx
+  ansible.builtin.template:
+    src: nginx-netboot.conf.j2
+    dest: /etc/nginx/sites-available/netboot
+    mode: "0644"
+  notify: Recharger nginx
+
+- name: Activer le site nginx
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/netboot
+    dest: /etc/nginx/sites-enabled/netboot
+    state: link
+  notify: Recharger nginx
+
+- name: Retirer le site nginx par defaut
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Recharger nginx
+
+- name: Regles nftables
+  ansible.builtin.template:
+    src: netboot.nft.j2
+    dest: /etc/nftables.d/netboot.nft
+    mode: "0644"
+  when: netboot_firewall
+  notify: Recharger nftables (netboot)
+
+- name: Services actifs
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [dnsmasq, nginx]
+  when: not ansible_check_mode

@@ -1,0 +1,7 @@
+# {{ ansible_managed }} (role netboot)
+[Unit]
+Description=Regenere le menu iPXE des ISOs locales
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/netboot-menu-gen

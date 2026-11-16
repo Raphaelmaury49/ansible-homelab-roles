@@ -1,0 +1,61 @@
+#!ipxe
+# {{ ansible_managed }} (role netboot)
+set base http://{{ netboot_server_ip }}
+
+:start
+menu {{ netboot_menu_title }} - ${platform} ${buildarch} - ${ip}
+item --gap -- Boot reseau
+item netbootxyz   netboot.xyz (installeurs et outils, Internet)
+item isos         ISOs locales
+{% for e in netboot_extra_entries %}
+item {{ e.name }}  {{ e.label }}
+{% endfor %}
+item --gap -- Divers
+item local        Demarrer sur le disque local
+item shell        Shell iPXE
+item reboot       Redemarrer
+item poweroff     Eteindre
+choose --timeout {{ netboot_menu_timeout * 1000 }} --default {{ netboot_menu_default }} sel || goto local
+goto ${sel}
+
+:netbootxyz
+# Menu en ligne chaine directement (pas de 2e DHCP) ; binaires locaux en secours.
+# version = celle des binaires netboot.xyz, sinon leur menu rechaine son propre binaire
+# (qui refait un DHCP, tres lent en UEFI sous OVMF).
+set version {{ netboot_xyz_menu_version }}
+chain --autofree https://boot.netboot.xyz || goto netbootxyz_local
+:netbootxyz_local
+iseq ${platform} efi && goto netbootxyz_efi ||
+chain --autofree ${base}/netboot.xyz-undionly.kpxe || chain --autofree ${base}/netboot.xyz.lkrn || goto failed
+:netbootxyz_efi
+chain --autofree ${base}/netboot.xyz-snponly.efi || goto failed
+
+:isos
+chain --autofree ${base}/iso.ipxe || goto failed
+goto start
+
+{% for e in netboot_extra_entries %}
+:{{ e.name }}
+{{ e.script }}
+goto start
+
+{% endfor %}
+:local
+iseq ${platform} efi && exit ||
+sanboot --no-describe --drive 0x80 || exit
+
+:shell
+echo Tapez exit pour revenir au menu
+shell
+goto start
+
+:reboot
+reboot
+
+:poweroff
+poweroff
+
+:failed
+echo Echec, retour au menu dans 5 s
+sleep 5
+goto start

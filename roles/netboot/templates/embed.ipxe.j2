@@ -1,0 +1,14 @@
+#!ipxe
+# {{ ansible_managed }} (role netboot)
+# Embarque dans les binaires iPXE (undionly.kpxe / snponly.efi).
+# Reutilise le bail DHCP mis en cache par le firmware PXE : un 2e DHCP depuis
+# iPXE UEFI peut bloquer ~3 min (constate sous OVMF/Proxmox). DHCP seulement en secours.
+ifopen net0 ||
+isset ${net0/ip} && goto boot ||
+:retry
+dhcp || goto retry
+:boot
+chain --autofree http://{{ netboot_server_ip }}/menu.ipxe || goto failed
+:failed
+echo Menu injoignable sur http://{{ netboot_server_ip }}/menu.ipxe
+prompt --timeout 10000 Touche pour le shell iPXE, sinon nouvel essai... && shell || goto retry

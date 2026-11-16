@@ -1,0 +1,10 @@
+/* {{ ansible_managed }} (role netboot) */
+{% if netboot_ipxe_https %}
+#define DOWNLOAD_PROTO_HTTPS
+{% endif %}
+#define NSLOOKUP_CMD
+#define PING_CMD
+#define REBOOT_CMD
+#define POWEROFF_CMD
+#define CONSOLE_CMD
+#define IMAGE_TRUST_CMD

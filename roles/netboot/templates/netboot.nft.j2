@@ -1,0 +1,13 @@
+# {{ ansible_managed }} (role netboot)
+table inet filter {
+  chain input {
+    udp dport 67 accept comment "proxydhcp"
+    udp dport 4011 accept comment "pxe-bootserver"
+{% if netboot_tftp_sources %}
+    ip saddr { {{ netboot_tftp_sources | join(', ') }} } udp dport 69 accept comment "tftp"
+{% endif %}
+{% if netboot_http_sources %}
+    ip saddr { {{ netboot_http_sources | join(', ') }} } tcp dport 80 accept comment "netboot-http"
+{% endif %}
+  }
+}

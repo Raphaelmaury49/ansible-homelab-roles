@@ -1,0 +1,62 @@
+#!/bin/sh
+# {{ ansible_managed }} (role netboot)
+# Genere {{ netboot_http_dir }}/iso.ipxe a partir des .iso presentes dans {{ netboot_iso_dir }}
+set -eu
+ISO_DIR="{{ netboot_iso_dir }}"
+OUT="{{ netboot_http_dir }}/iso.ipxe"
+TMP="$(mktemp "${OUT}.XXXXXX")"
+trap 'rm -f "$TMP"' EXIT
+
+urlenc() { printf '%s' "$1" | sed -e 's/%/%25/g' -e 's/ /%20/g' -e 's/#/%23/g' -e 's/+/%2B/g' -e 's/&/%26/g'; }
+
+{
+  echo '#!ipxe'
+  echo "# Genere par netboot-menu-gen le $(date '+%F %T')"
+  echo 'set base http://{{ netboot_server_ip }}'
+  echo ':start'
+  echo 'menu ISOs locales - ${platform}'
+  i=0
+  for f in "$ISO_DIR"/*.iso "$ISO_DIR"/*.ISO; do
+    [ -f "$f" ] || continue
+    i=$((i + 1))
+    size=$(du -h --apparent-size "$f" | cut -f1)
+    echo "item iso$i $(basename "$f" | tr -cd '[:print:]') ($size)"
+  done
+  [ "$i" -eq 0 ] && echo "item --gap -- Aucune ISO : deposer des .iso dans $ISO_DIR"
+  echo 'item --gap --'
+  echo 'item back <- Retour au menu principal'
+  echo 'choose --default back sel || goto back'
+  echo 'goto ${sel}'
+  echo ':back'
+  echo 'exit'
+  i=0
+  for f in "$ISO_DIR"/*.iso "$ISO_DIR"/*.ISO; do
+    [ -f "$f" ] || continue
+    i=$((i + 1))
+    u="\${base}/iso/$(urlenc "$(basename "$f")")"
+    cat <<EOF
+:iso$i
+iseq \${platform} efi && goto iso${i}_san ||
+menu Methode de boot (BIOS)
+item san  sanboot (ISO montee via HTTP, recommande)
+item mem  memdisk (ISO chargee en RAM)
+choose --default san m || goto start
+goto iso${i}_\${m}
+:iso${i}_mem
+kernel \${base}/memdisk iso raw || goto fail
+initrd $u || goto fail
+boot || goto fail
+:iso${i}_san
+sanboot --no-describe $u || goto fail
+EOF
+  done
+  echo ':fail'
+  echo 'echo Echec du boot de cette ISO (voir la doc : sanboot/memdisk ne conviennent pas a toutes les ISOs)'
+  echo 'prompt Touche pour revenir'
+  echo 'goto start'
+} > "$TMP"
+
+chmod 0644 "$TMP"
+mv -f "$TMP" "$OUT"
+trap - EXIT
+echo "iso.ipxe : $i ISO(s)"

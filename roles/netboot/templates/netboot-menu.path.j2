@@ -1,0 +1,10 @@
+# {{ ansible_managed }} (role netboot)
+[Unit]
+Description=Surveille {{ netboot_iso_dir }} pour regenerer le menu des ISOs
+
+[Path]
+PathChanged={{ netboot_iso_dir }}
+Unit=netboot-menu.service
+
+[Install]
+WantedBy=multi-user.target

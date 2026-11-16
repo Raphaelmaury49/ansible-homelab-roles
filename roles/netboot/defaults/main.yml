@@ -1,0 +1,43 @@
+---
+# Serveur de boot reseau : dnsmasq en proxyDHCP (n'attribue aucune IP) + TFTP,
+# iPXE compile avec script embarque, nginx pour le menu, netboot.xyz et les ISOs.
+
+# Adresse annoncee aux clients PXE (HTTP du menu)
+netboot_server_ip: "{{ ansible_default_ipv4.address }}"
+# Reseau sur lequel repondre en proxyDHCP, ex. 10.0.0.0 (OBLIGATOIRE)
+netboot_proxy_network: ""
+
+# Arborescence
+netboot_root: /srv/netboot
+netboot_tftp_dir: "{{ netboot_root }}/tftp"
+netboot_http_dir: "{{ netboot_root }}/http"
+netboot_iso_dir: "{{ netboot_root }}/iso"
+netboot_iso_owner: "{{ base_admin_user | default('root') }}"
+
+# iPXE (compile localement, script embarque -> pas de boucle DHCP)
+netboot_ipxe_repo: https://github.com/ipxe/ipxe.git
+netboot_ipxe_version: v2.0.0
+netboot_ipxe_src: /opt/ipxe
+netboot_ipxe_jobs: "{{ ansible_processor_vcpus | default(2) }}"
+netboot_ipxe_https: true
+
+# netboot.xyz (binaires chaines depuis le menu)
+netboot_xyz_version: "3.0.3"
+# Version annoncee au menu en ligne (evite le rechainage vers leur binaire)
+netboot_xyz_menu_version: "3.x"
+netboot_xyz_files:
+  - netboot.xyz-snponly.efi
+  - netboot.xyz-undionly.kpxe
+  - netboot.xyz.lkrn
+
+# Menu
+netboot_menu_title: Homelab PXE
+netboot_menu_timeout: 15        # secondes
+netboot_menu_default: local     # local | netbootxyz | isos | <nom d'une entree extra>
+# Entrees supplementaires : [{name: winpe, label: "Installer Windows", script: "kernel ...\nboot"}]
+netboot_extra_entries: []
+
+# Pare-feu (fichier /etc/nftables.d, inclus par le role base)
+netboot_firewall: true
+netboot_tftp_sources: []        # CIDR autorisees en TFTP (clients PXE)
+netboot_http_sources: []        # CIDR autorisees en HTTP (clients PXE + reverse proxy)

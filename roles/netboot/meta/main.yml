@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: netboot
+  author: Raphaelmaury49
+  description: PXE boot server - dnsmasq proxyDHCP + TFTP, iPXE built with embedded script, nginx menu, netboot.xyz chainload, local ISOs (sanboot/memdisk) with auto-generated menu
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions: [trixie]
+dependencies: []

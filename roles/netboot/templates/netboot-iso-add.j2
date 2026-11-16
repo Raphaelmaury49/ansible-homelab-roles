@@ -1,0 +1,13 @@
+#!/bin/sh
+# {{ ansible_managed }} (role netboot)
+# Usage : netboot-iso-add <url> [nom.iso]  -> telecharge l'ISO dans {{ netboot_iso_dir }}
+set -eu
+[ $# -ge 1 ] || { echo "usage: $0 <url> [nom.iso]" >&2; exit 1; }
+URL="$1"
+NAME="${2:-$(basename "${URL%%\?*}")}"
+case "$NAME" in *.iso|*.ISO) ;; *) NAME="$NAME.iso" ;; esac
+DEST="{{ netboot_iso_dir }}/$NAME"
+# telechargement sous un nom temporaire (le menu n'affiche que les .iso)
+curl -fL --retry 3 -o "$DEST.part" "$URL"
+mv -f "$DEST.part" "$DEST"
+echo "OK : $DEST"
