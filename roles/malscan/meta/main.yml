@@ -1,7 +1,0 @@
----
-galaxy_info:
-  role_name: malscan
-  description: Scanner statique multi-moteur (ClamAV + YARA + capa) expose en MCP + CLI
-  license: MIT
-  min_ansible_version: "2.14"
-dependencies: []
