@@ -37,6 +37,10 @@ netboot_menu_default: local     # local | netbootxyz | isos | <nom d'une entree 
 # Entrees supplementaires : [{name: winpe, label: "Installer Windows", script: "kernel ...\nboot"}]
 netboot_extra_entries: []
 
+# Taille max des paquets TFTP (0 = defaut). A fixer (ex. 1400) si des clients bootent
+# a travers un tunnel IPsec/VPN, pour eviter la fragmentation des blocs TFTP.
+netboot_tftp_mtu: 0
+
 # Pare-feu (fichier /etc/nftables.d, inclus par le role base)
 netboot_firewall: true
 netboot_tftp_sources: []        # CIDR autorisees en TFTP (clients PXE)

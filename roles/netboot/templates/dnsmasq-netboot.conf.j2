@@ -1,12 +1,16 @@
 # {{ ansible_managed }} (role netboot)
 # proxyDHCP : aucune adresse attribuee, uniquement les infos de boot PXE.
 # Le DHCP du reseau reste le serveur existant.
+# Clients d'autres sous-reseaux (relayes/routes) : options 66/67 sur leur DHCP, le TFTP et le HTTP suffisent ici.
 port=0
 log-dhcp
 dhcp-range={{ netboot_proxy_network }},proxy
 
 enable-tftp
 tftp-root={{ netboot_tftp_dir }}
+{% if netboot_tftp_mtu | int > 0 %}
+tftp-mtu={{ netboot_tftp_mtu }}
+{% endif %}
 
 # Pas de filtrage des clients iPXE : les ROM PXE de QEMU/Proxmox SONT des iPXE
 # et doivent recevoir le binaire ; notre iPXE (script embarque) ignore le bootfile.
