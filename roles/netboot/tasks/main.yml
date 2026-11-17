@@ -15,6 +15,7 @@
       - build-essential
       - liblzma-dev
       - perl
+      - ca-certificates
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -64,6 +65,13 @@
     mode: "0644"
   register: _netboot_general
 
+- name: CA de signature netboot.xyz (racine de confiance iPXE)
+  ansible.builtin.copy:
+    src: netbootxyz-ca.pem
+    dest: /etc/netboot/netbootxyz-ca.pem
+    mode: "0644"
+  register: _netboot_ca
+
 - name: Binaires iPXE deja presents ?
   ansible.builtin.stat:
     path: "{{ netboot_tftp_dir }}/snponly.efi"
@@ -74,9 +82,11 @@
     cmd: >-
       make -C {{ netboot_ipxe_src }}/src -j{{ netboot_ipxe_jobs }} NO_WERROR=1
       EMBED=/etc/netboot/embed.ipxe
+      TRUST={{ netboot_ipxe_trust | join(',') }}
       bin/undionly.kpxe bin-x86_64-efi/snponly.efi bin-x86_64-efi/ipxe.efi
   when: >-
     _netboot_ipxe_git.changed or _netboot_embed.changed or _netboot_general.changed
+    or _netboot_ca.changed
     or not _netboot_bin.stat.exists
   register: _netboot_build
   changed_when: true

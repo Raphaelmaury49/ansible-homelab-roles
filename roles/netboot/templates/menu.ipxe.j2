@@ -23,7 +23,11 @@ goto ${sel}
 # version = celle des binaires netboot.xyz, sinon leur menu rechaine son propre binaire
 # (qui refait un DHCP, tres lent en UEFI sous OVMF).
 set version {{ netboot_xyz_menu_version }}
-chain --autofree https://boot.netboot.xyz || goto netbootxyz_local
+# Telechargement et execution separes : un retour du menu netboot.xyz (erreur, disque
+# local) ramene ici au lieu de declencher le binaire de secours.
+imgfetch --name nbxyz https://boot.netboot.xyz || goto netbootxyz_local
+imgexec --autofree nbxyz ||
+goto start
 :netbootxyz_local
 iseq ${platform} efi && goto netbootxyz_efi ||
 chain --autofree ${base}/netboot.xyz-undionly.kpxe || chain --autofree ${base}/netboot.xyz.lkrn || goto failed
