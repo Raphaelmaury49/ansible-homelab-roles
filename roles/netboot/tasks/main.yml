@@ -72,21 +72,46 @@
     mode: "0644"
   register: _netboot_ca
 
+- name: Racines de confiance iPXE (un certificat par fichier)
+  ansible.builtin.shell: |
+    set -eu
+    tmp=$(mktemp -d)
+    for f in {{ netboot_ipxe_trust | join(' ') }}; do
+      awk -v d="$tmp" -v b="$(basename "$f")" '
+        /-----BEGIN CERTIFICATE-----/ {n++; out=sprintf("%s/%s-%03d.pem", d, b, n)}
+        out {print > out}
+        /-----END CERTIFICATE-----/ {close(out); out=""}' "$f"
+    done
+    new=$(cd "$tmp" && cat * | sha256sum)
+    old=$(cat /etc/netboot/trust/* 2>/dev/null | sha256sum)
+    if [ "$new" != "$old" ] || [ ! -d /etc/netboot/trust ]; then
+      rm -rf /etc/netboot/trust && mv "$tmp" /etc/netboot/trust && chmod 755 /etc/netboot/trust
+      echo CHANGED
+    else
+      rm -rf "$tmp"
+    fi
+    ls /etc/netboot/trust | wc -l
+  args:
+    executable: /bin/bash
+  register: _netboot_trust
+  changed_when: "'CHANGED' in _netboot_trust.stdout"
+  when: not ansible_check_mode
+
 - name: Binaires iPXE deja presents ?
   ansible.builtin.stat:
     path: "{{ netboot_tftp_dir }}/snponly.efi"
   register: _netboot_bin
 
 - name: Compiler iPXE (BIOS undionly + UEFI snponly/ipxe)
-  ansible.builtin.command:
+  ansible.builtin.shell:
     cmd: >-
       make -C {{ netboot_ipxe_src }}/src -j{{ netboot_ipxe_jobs }} NO_WERROR=1
       EMBED=/etc/netboot/embed.ipxe
-      TRUST={{ netboot_ipxe_trust | join(',') }}
+      TRUST=$(ls /etc/netboot/trust/*.pem | paste -sd, -)
       bin/undionly.kpxe bin-x86_64-efi/snponly.efi bin-x86_64-efi/ipxe.efi
   when: >-
     _netboot_ipxe_git.changed or _netboot_embed.changed or _netboot_general.changed
-    or _netboot_ca.changed
+    or _netboot_ca.changed or (_netboot_trust.changed | default(false))
     or not _netboot_bin.stat.exists
   register: _netboot_build
   changed_when: true

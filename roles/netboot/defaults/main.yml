@@ -20,9 +20,10 @@ netboot_ipxe_version: v2.0.0
 netboot_ipxe_src: /opt/ipxe
 netboot_ipxe_jobs: "{{ ansible_processor_vcpus | default(2) }}"
 netboot_ipxe_https: true
-# Racines de confiance compilees dans iPXE (TRUST) : magasin systeme (HTTPS vers
-# des sites publics) + CA de signature de netboot.xyz (imgverify des menus).
-# Empreinte SHA-256 de la CA netboot.xyz : 08:32:EE:5F:...:5F:FA:68:12 (exp. 2035)
+# Racines de confiance compilees dans iPXE (TRUST). Le Makefile d'iPXE ne lit que le
+# PREMIER certificat de chaque fichier : les bundles sont donc decoupes en un fichier
+# par certificat dans /etc/netboot/trust. Magasin systeme (HTTPS vers des sites publics)
+# + CA de signature netboot.xyz (imgverify), empreinte SHA-256 08:32:EE:5F:...:68:12.
 netboot_ipxe_trust:
   - /etc/ssl/certs/ca-certificates.crt
   - /etc/netboot/netbootxyz-ca.pem
