@@ -4,11 +4,17 @@
 # Reutilise le bail DHCP mis en cache par le firmware PXE : un 2e DHCP depuis
 # iPXE UEFI peut bloquer ~3 min (constate sous OVMF/Proxmox). DHCP seulement en secours.
 ifopen net0 ||
-isset ${net0/ip} && goto boot ||
+isset ${net0/ip} && goto have_ip ||
 :retry
 dhcp || goto retry
+:have_ip
+# Certains DHCP (ex. MikroTik) n'envoient que les options demandees : le firmware PXE
+# ne demandant pas l'option 6, le bail repris n'a alors pas de DNS -> DNS de secours.
+isset ${dns} || set dns {{ netboot_fallback_dns }}
 :boot
 chain --autofree http://{{ netboot_server_ip }}/menu.ipxe || goto failed
+# Retour normal du menu (disque local, Echap) : rendre la main au firmware
+exit
 :failed
 echo Menu injoignable sur http://{{ netboot_server_ip }}/menu.ipxe
 prompt --timeout 10000 Touche pour le shell iPXE, sinon nouvel essai... && shell || goto retry

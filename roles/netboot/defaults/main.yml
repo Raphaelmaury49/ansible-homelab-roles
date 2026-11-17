@@ -20,6 +20,8 @@ netboot_ipxe_version: v2.0.0
 netboot_ipxe_src: /opt/ipxe
 netboot_ipxe_jobs: "{{ ansible_processor_vcpus | default(2) }}"
 netboot_ipxe_https: true
+# DNS utilise par iPXE si le bail DHCP repris du firmware n'en contient pas
+netboot_fallback_dns: 1.1.1.1
 
 # netboot.xyz (binaires chaines depuis le menu)
 netboot_xyz_version: "3.0.3"
