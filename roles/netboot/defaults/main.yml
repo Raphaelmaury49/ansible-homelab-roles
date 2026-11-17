@@ -24,7 +24,11 @@ netboot_ipxe_https: true
 # PREMIER certificat de chaque fichier : les bundles sont donc decoupes en un fichier
 # par certificat dans /etc/netboot/trust. Magasin systeme (HTTPS vers des sites publics)
 # + CA de signature netboot.xyz (imgverify), empreinte SHA-256 08:32:EE:5F:...:68:12.
+# + iPXE root CA (empreinte 9F:AF:71:7B:...:5E:ED:1A, celle du source rootcert.c) :
+#   indispensable pour les chaines contre-signees (ex. CloudFront : Amazon Root CA 1
+#   signee par Starfield G2), resolues via les contre-signatures http://ca.ipxe.org/auto.
 netboot_ipxe_trust:
+  - /etc/netboot/ipxe-root-ca.pem
   - /etc/ssl/certs/ca-certificates.crt
   - /etc/netboot/netbootxyz-ca.pem
 # DNS utilise par iPXE si le bail DHCP repris du firmware n'en contient pas

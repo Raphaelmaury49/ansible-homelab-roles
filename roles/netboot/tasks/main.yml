@@ -65,11 +65,12 @@
     mode: "0644"
   register: _netboot_general
 
-- name: CA de signature netboot.xyz (racine de confiance iPXE)
+- name: Racines iPXE fournies par le role (iPXE root CA, CA de signature netboot.xyz)
   ansible.builtin.copy:
-    src: netbootxyz-ca.pem
-    dest: /etc/netboot/netbootxyz-ca.pem
+    src: "{{ item }}"
+    dest: "/etc/netboot/{{ item }}"
     mode: "0644"
+  loop: [ipxe-root-ca.pem, netbootxyz-ca.pem]
   register: _netboot_ca
 
 - name: Racines de confiance iPXE (un certificat par fichier)
