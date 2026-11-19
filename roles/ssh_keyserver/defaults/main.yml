@@ -3,7 +3,7 @@
 ssh_keyserver_mode: client
 
 # ---------- client ----------
-# URL du serveur de cles (HTTPS, verification TLS). Le script appelle <url>/<user>.keys
+# URL du serveur de cles (HTTPS uniquement, verification TLS). Le script appelle <url>/<user>.keys
 ssh_keyserver_url: https://keys.raphaelmaury.fr
 # Seuls ces comptes passent par le serveur de cles (les autres : le script sort en 0 sans rien afficher)
 # root : hotes hors IaC ; admin : hotes geres par le role base (PermitRootLogin no, AllowUsers admin)
@@ -12,15 +12,37 @@ ssh_keyserver_users: [root, admin]
 ssh_keyserver_cmd_user: sshkeys
 ssh_keyserver_cache_dir: /var/cache/ssh-keys
 ssh_keyserver_script: /usr/local/bin/ssh-keys-fetch
+# Age maximal (jours) du cache utilisable en repli (erreur reseau, timeout, 5xx, 403...)
+ssh_keyserver_cache_max_age_days: 14
+# Nombre maximal de cles retenues par compte
+ssh_keyserver_max_keys: 10
+# ssh-rsa refuse par defaut ; si true : uniquement >= 3072 bits (verifie par ssh-keygen -lf)
+ssh_keyserver_allow_rsa: false
+# Hotes a ne JAMAIS configurer en client (Technitium, NPM, serveur de cles : dependance circulaire).
+# A renseigner dans l'inventaire ; le role echoue si l'hote en fait partie.
+ssh_keyserver_client_excluded_hosts: []
 # Lance le script en tant que sshkeys en fin de role et affiche le nombre de cles obtenues
 ssh_keyserver_test: true
 
+# ---------- signature (client et serveur), desactivee par defaut ----------
+ssh_keyserver_signing: false
+# Cle publique (ssh-ed25519 ... ) dont la cle privee signe les listes. Jamais la cle privee.
+ssh_keyserver_signer_pubkey: ""
+ssh_keyserver_allowed_signers: /etc/ssh/keyserver_allowed_signers
+
 # ---------- server ----------
-# user -> liste de cles publiques (ex. root: ["ssh-ed25519 AAAA... commentaire"])
+# user -> liste de cles publiques (ex. root: ["ssh-ed25519 AAAA... commentaire"]).
+# Avec ssh_keyserver_signing, la 1re ligne de chaque liste est "# serial: <entier>".
 ssh_keyserver_keys: {}
+# Signatures .sig fournies (jamais generees ici) : user -> contenu de <user>.keys.sig
+ssh_keyserver_signatures: {}
+# ... ou dossier du controleur contenant <user>.keys.sig (utilise pour les users absents de la variable ci-dessus)
+ssh_keyserver_signatures_dir: ""
 ssh_keyserver_root: /srv/ssh-keys
+ssh_keyserver_access_log: /var/log/nginx/ssh-keyserver.access.log
 # Retire le site nginx par defaut (sinon conflit default_server sur le port 80)
 ssh_keyserver_nginx_disable_default: true
-# Pare-feu : regle ajoutee dans /etc/nftables.d (inclus par le role base) si la liste n'est pas vide
+# Sources autorisees (nginx allow/deny + regle nftables port 80) : IP/CIDR du reverse proxy NPM.
+# Obligatoire en mode server (liste vide = le role echoue).
 ssh_keyserver_firewall: true
-ssh_keyserver_http_sources: []   # CIDR autorisees sur le port 80 (reverse proxy NPM)
+ssh_keyserver_http_sources: []

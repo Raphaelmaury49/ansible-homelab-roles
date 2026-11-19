@@ -2,9 +2,36 @@
 # NE TOUCHE PAS a ~root/.ssh/authorized_keys : sur Proxmox VE c'est un lien symbolique vers
 # /etc/pve/priv/authorized_keys, et le fichier local reste l'acces de secours.
 
-- name: Paquets (curl, certificats)
+- name: Verifier les variables client
+  ansible.builtin.assert:
+    that:
+      - inventory_hostname not in ssh_keyserver_client_excluded_hosts
+      - ssh_keyserver_url is match('^https://[^ ]+$')
+      - ssh_keyserver_users | length > 0
+      - ssh_keyserver_users | select('match', '^[a-z_][a-z0-9_-]*$') | list | length == ssh_keyserver_users | length
+      - ssh_keyserver_cache_max_age_days | int >= 1
+      - ssh_keyserver_max_keys | int >= 1
+      - not ssh_keyserver_signing or (ssh_keyserver_signer_pubkey | length > 0 and ssh_keyserver_signer_pubkey is match('^(ssh-ed25519|sk-ssh-ed25519@openssh[.]com) '))
+    fail_msg: >-
+      Variables client invalides, ou hote exclu du mode client (Technitium, NPM, serveur de cles),
+      ou ssh_keyserver_signing sans ssh_keyserver_signer_pubkey (ed25519)
+    quiet: true
+
+# Garde-fou : le script rendu ne doit jamais desactiver la verification TLS ni affaiblir curl.
+- name: Garde-fou - le script ne contient ni l'option d'insecurite curl ni --insecure
+  ansible.builtin.assert:
+    that:
+      - (lookup('ansible.builtin.template', 'ssh-keys-fetch.j2') | regex_findall(_ssh_keyserver_insecure_re, multiline=True)) | length == 0
+      - "'--proto' in lookup('ansible.builtin.template', 'ssh-keys-fetch.j2')"
+      - "'--tlsv1.2' in lookup('ansible.builtin.template', 'ssh-keys-fetch.j2')"
+    fail_msg: "ssh-keys-fetch.j2 contient une option curl d'insecurite TLS (-k, --insecure) ou n'impose pas --proto/--tlsv1.2"
+    quiet: true
+  vars:
+    _ssh_keyserver_insecure_re: '(^|\s)(-[A-Za-z]*k[A-Za-z]*|--insecure)(\s|$)'
+
+- name: Paquets (curl, certificats, ssh-keygen)
   ansible.builtin.package:
-    name: [curl, ca-certificates]
+    name: [curl, ca-certificates, openssh-client]
     state: present
 
 - name: Compte systeme {{ ssh_keyserver_cmd_user }} (sans shell)
@@ -17,7 +44,7 @@
     password: "!"
     comment: SSH keys fetcher (AuthorizedKeysCommand)
 
-- name: Cache des cles
+- name: Cache des cles (sshkeys:sshkeys 0700)
   ansible.builtin.file:
     path: "{{ ssh_keyserver_cache_dir }}"
     state: directory
@@ -26,7 +53,16 @@
     mode: "0700"
   when: not ansible_check_mode
 
-- name: Script ssh-keys-fetch
+- name: Fichier allowed_signers (cle publique de signature)
+  ansible.builtin.template:
+    src: ssh-keyserver-allowed-signers.j2
+    dest: "{{ ssh_keyserver_allowed_signers }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: ssh_keyserver_signing
+
+- name: Script ssh-keys-fetch (root:root 0755)
   ansible.builtin.template:
     src: ssh-keys-fetch.j2
     dest: "{{ ssh_keyserver_script }}"

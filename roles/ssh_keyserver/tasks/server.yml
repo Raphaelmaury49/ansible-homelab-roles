@@ -1,4 +1,12 @@
 ---
+- name: Verifier les parametres serveur
+  ansible.builtin.assert:
+    that:
+      - ssh_keyserver_http_sources | length > 0
+      - ssh_keyserver_http_sources | select('match', '^[0-9a-fA-F:.]+(/[0-9]{1,3})?$') | list | length == ssh_keyserver_http_sources | length
+    fail_msg: "ssh_keyserver_http_sources doit contenir au moins une IP/CIDR valide (reverse proxy)"
+    quiet: true
+
 - name: Verifier les noms d'utilisateurs
   ansible.builtin.assert:
     that:
@@ -6,6 +14,27 @@
     fail_msg: "Nom d'utilisateur invalide pour ssh_keyserver_keys : {{ item }}"
     quiet: true
   loop: "{{ ssh_keyserver_keys.keys() | list }}"
+
+- name: Signature - chaque liste commence par un serial
+  ansible.builtin.assert:
+    that:
+      - (item.value | default([], true)) | length > 0
+      - (item.value | first) is match('^# serial: [0-9]{1,12}$')
+    fail_msg: "{{ item.key }} : avec ssh_keyserver_signing, la 1re ligne doit etre '# serial: <entier>'"
+    quiet: true
+  loop: "{{ ssh_keyserver_keys | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: ssh_keyserver_signing
+
+- name: Signature - une signature est fournie pour chaque compte
+  ansible.builtin.assert:
+    that:
+      - item in ssh_keyserver_signatures or ssh_keyserver_signatures_dir | length > 0
+    fail_msg: "Aucune signature fournie pour {{ item }} (ssh_keyserver_signatures ou ssh_keyserver_signatures_dir)"
+    quiet: true
+  loop: "{{ ssh_keyserver_keys.keys() | list }}"
+  when: ssh_keyserver_signing
 
 - name: Paquets
   ansible.builtin.apt:
@@ -22,6 +51,7 @@
     group: root
     mode: "0755"
 
+# Les octets publies sont exactement ceux signes : une ligne par cle, LF, LF final.
 - name: Fichiers <user>.keys
   ansible.builtin.copy:
     dest: "{{ ssh_keyserver_root }}/{{ item.key }}.keys"
@@ -33,7 +63,30 @@
   loop_control:
     label: "{{ item.key }}"
 
-- name: Site nginx (uniquement /<user>.keys, pas de listing)
+# Signatures FOURNIES (variable ou fichier du depot) : la cle privee de signature n'est jamais ici.
+- name: Fichiers <user>.keys.sig (variable)
+  ansible.builtin.copy:
+    dest: "{{ ssh_keyserver_root }}/{{ item.key }}.keys.sig"
+    content: "{{ item.value | trim }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ ssh_keyserver_signatures | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: ssh_keyserver_signing and item.key in ssh_keyserver_keys
+
+- name: Fichiers <user>.keys.sig (dossier du depot)
+  ansible.builtin.copy:
+    src: "{{ ssh_keyserver_signatures_dir }}/{{ item }}.keys.sig"
+    dest: "{{ ssh_keyserver_root }}/{{ item }}.keys.sig"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ ssh_keyserver_keys.keys() | list | difference(ssh_keyserver_signatures.keys() | list) }}"
+  when: ssh_keyserver_signing and ssh_keyserver_signatures_dir | length > 0
+
+- name: Site nginx (uniquement /<user>.keys, ACL sur les sources, log dedie)
   ansible.builtin.template:
     src: nginx-keyserver.conf.j2
     dest: /etc/nginx/sites-available/ssh-keyserver
@@ -59,14 +112,14 @@
     path: /etc/nftables.d
     state: directory
     mode: "0755"
-  when: ssh_keyserver_firewall and ssh_keyserver_http_sources | length > 0
+  when: ssh_keyserver_firewall
 
 - name: Regles nftables (port 80 depuis le reverse proxy)
   ansible.builtin.template:
     src: ssh-keyserver.nft.j2
     dest: /etc/nftables.d/ssh-keyserver.nft
     mode: "0644"
-  when: ssh_keyserver_firewall and ssh_keyserver_http_sources | length > 0
+  when: ssh_keyserver_firewall
   notify: Recharger nftables (ssh_keyserver)
 
 - name: Service nginx actif
