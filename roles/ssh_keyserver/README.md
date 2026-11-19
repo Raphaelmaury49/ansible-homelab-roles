@@ -9,6 +9,14 @@ sshd (client) --AuthorizedKeysCommand--> ssh-keys-fetch --HTTPS--> NPM (keys.<do
 Le role ne contient aucune donnee privee : les cles (publiques) sont fournies par l'inventaire
 (`ssh_keyserver_keys`).
 
+## Comptes : root et admin
+
+Par defaut (`ssh_keyserver_users: [root, admin]`), le serveur sert la meme liste de cles pour `root`
+et pour `admin` (fichiers `root.keys` et `admin.keys`, a alimenter dans `ssh_keyserver_keys`) :
+
+- les hotes geres par le role `base` gardent `PermitRootLogin no` + `AllowUsers <admin>` et se connectent avec `admin` ;
+- les hotes hors IaC (ex. Proxmox VE) se connectent avec `root`.
+
 ## Mode `server`
 
 nginx sert en texte brut `/srv/ssh-keys/<user>.keys` sur le port 80 (TLS termine par le reverse proxy).
@@ -16,7 +24,7 @@ Seul `/<user>.keys` en GET/HEAD est servi, tout le reste renvoie 404, pas de lis
 
 | Variable | Defaut | Role |
 |---|---|---|
-| `ssh_keyserver_keys` | `{}` | dict `user -> [cles]` |
+| `ssh_keyserver_keys` | `{}` | dict `user -> [cles]` (typiquement `root` et `admin`) |
 | `ssh_keyserver_root` | `/srv/ssh-keys` | dossier servi |
 | `ssh_keyserver_nginx_disable_default` | `true` | retire le site nginx par defaut |
 | `ssh_keyserver_firewall` / `ssh_keyserver_http_sources` | `true` / `[]` | si la liste n'est pas vide : regle nftables port 80 dans `/etc/nftables.d/ssh-keyserver.nft`. Avec `base` (default-drop), renseigner l'IP du reverse proxy |
@@ -30,11 +38,11 @@ Les fichiers de comptes retires de `ssh_keyserver_keys` ne sont pas supprimes du
 - `/etc/ssh/sshd_config.d/50-keyserver.conf` : `AuthorizedKeysCommand` + `AuthorizedKeysCommandUser sshkeys` ;
 - `Include /etc/ssh/sshd_config.d/*.conf` verifie dans `sshd_config` (ajoute en tete sinon) ;
 - validation `sshd -t` avant rechargement (handler `Reload ssh (ssh_keyserver)` : validation puis reload, restart si `ssh.socket` actif) ;
-- tache de test : script lance en tant que `sshkeys`, nombre de cles affiche.
+- tache de test : script lance en tant que `sshkeys` pour le premier compte de `ssh_keyserver_users`, nombre de cles affiche.
 
 Comportement du script (`ssh-keys-fetch %u`) :
 
-1. user hors `ssh_keyserver_users` (defaut `[root]`) : sortie 0, aucune sortie ;
+1. user hors `ssh_keyserver_users` (defaut `[root, admin]`) : sortie 0, aucune sortie ;
 2. `curl -fsS --max-time 3 <url>/<user>.keys` (verification TLS) ;
 3. ne garde que les lignes `ssh-ed25519`, `ssh-rsa`, `ecdsa-sha2-`, `sk-` ;
 4. resultat non vide : cache ecrit de facon atomique (mktemp + mv) et cles affichees ; sinon cache affiche s'il existe ; sinon rien ;
@@ -43,7 +51,7 @@ Comportement du script (`ssh-keys-fetch %u`) :
 | Variable | Defaut |
 |---|---|
 | `ssh_keyserver_url` | `https://keys.raphaelmaury.fr` |
-| `ssh_keyserver_users` | `[root]` |
+| `ssh_keyserver_users` | `[root, admin]` |
 | `ssh_keyserver_cmd_user` | `sshkeys` |
 | `ssh_keyserver_cache_dir` | `/var/cache/ssh-keys` |
 | `ssh_keyserver_test` | `true` |
@@ -52,18 +60,20 @@ Comportement du script (`ssh-keys-fetch %u`) :
 
 - `AuthorizedKeysFile` n'est pas modifie : le `authorized_keys` local reste l'acces de secours (sshd consulte les deux sources).
 - Proxmox VE : le role ne touche jamais a `/root/.ssh/authorized_keys` (lien symbolique vers `/etc/pve/priv/authorized_keys`).
-- Le role `base` interdit root par defaut (`PermitRootLogin no`, `AllowUsers <admin>`) : pour que root puisse se connecter avec ces cles, il faut `base_disable_root_login: false`. Ce role ne modifie pas ces reglages.
+- Le role `base` interdit root par defaut (`PermitRootLogin no`, `AllowUsers <admin>`) : sur un hote `base`, c'est le compte `admin` qui utilise les cles du serveur (aucun changement de `base` requis). Pour que `root` puisse se connecter avec ces cles, il faut `base_disable_root_login: false` ; ce role ne modifie pas ces reglages.
 - `sshd` retient la premiere valeur rencontree : l'`Include` doit preceder toute autre directive `AuthorizedKeysCommand` du fichier principal.
 
 ## Exemple
 
 ```yaml
-# serveur
+# serveur : meme liste pour root et admin (ancre YAML pour ne pas dupliquer)
 ssh_keyserver_mode: server
 ssh_keyserver_http_sources: ["192.168.2.x/32"]   # NPM
+ssh_keyserver_common_keys: &common_keys
+  - ssh-ed25519 AAAA... you@laptop
 ssh_keyserver_keys:
-  root:
-    - ssh-ed25519 AAAA... you@laptop
+  root: *common_keys
+  admin: *common_keys
 
 # clients
 ssh_keyserver_mode: client
