@@ -1,0 +1,4 @@
+# {{ ansible_managed }} (role ssh_keyserver)
+# AuthorizedKeysFile n'est PAS modifie : le authorized_keys local reste l'acces de secours.
+AuthorizedKeysCommand {{ ssh_keyserver_script }} %u
+AuthorizedKeysCommandUser {{ ssh_keyserver_cmd_user }}

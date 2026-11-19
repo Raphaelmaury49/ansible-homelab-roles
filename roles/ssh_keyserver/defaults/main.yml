@@ -1,0 +1,25 @@
+---
+# Mode du role : server (nginx sert les cles) | client (sshd interroge le serveur)
+ssh_keyserver_mode: client
+
+# ---------- client ----------
+# URL du serveur de cles (HTTPS, verification TLS). Le script appelle <url>/<user>.keys
+ssh_keyserver_url: https://keys.raphaelmaury.fr
+# Seuls ces comptes passent par le serveur de cles (les autres : le script sort en 0 sans rien afficher)
+ssh_keyserver_users: [root]
+# Compte systeme (sans shell) qui execute AuthorizedKeysCommand, proprietaire du cache
+ssh_keyserver_cmd_user: sshkeys
+ssh_keyserver_cache_dir: /var/cache/ssh-keys
+ssh_keyserver_script: /usr/local/bin/ssh-keys-fetch
+# Lance le script en tant que sshkeys en fin de role et affiche le nombre de cles obtenues
+ssh_keyserver_test: true
+
+# ---------- server ----------
+# user -> liste de cles publiques (ex. root: ["ssh-ed25519 AAAA... commentaire"])
+ssh_keyserver_keys: {}
+ssh_keyserver_root: /srv/ssh-keys
+# Retire le site nginx par defaut (sinon conflit default_server sur le port 80)
+ssh_keyserver_nginx_disable_default: true
+# Pare-feu : regle ajoutee dans /etc/nftables.d (inclus par le role base) si la liste n'est pas vide
+ssh_keyserver_firewall: true
+ssh_keyserver_http_sources: []   # CIDR autorisees sur le port 80 (reverse proxy NPM)

@@ -1,0 +1,37 @@
+#!/bin/sh
+# {{ ansible_managed }} (role ssh_keyserver)
+# AuthorizedKeysCommand : ssh-keys-fetch %u
+# Recupere <url>/<user>.keys, filtre les lignes de cles, met en cache (ecriture atomique).
+# Repli sur le cache si le serveur est injoignable. Sort TOUJOURS avec le code 0.
+URL="{{ ssh_keyserver_url | regex_replace('/+$', '') }}"
+USERS="{{ ssh_keyserver_users | join(' ') }}"
+CACHE_DIR="{{ ssh_keyserver_cache_dir }}"
+
+user="${1:-}"
+[ -n "$user" ] || exit 0
+
+allowed=0
+for u in $USERS; do
+  [ "$u" = "$user" ] && allowed=1
+done
+[ "$allowed" = 1 ] || exit 0
+
+cache="$CACHE_DIR/$user.keys"
+
+raw=$(curl -fsS --max-time 3 "$URL/$user.keys") || raw=""
+keys=$(printf '%s\n' "$raw" | tr -d '\r' | grep -E '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-|sk-)') || keys=""
+
+if [ -n "$keys" ]; then
+  tmp=$(mktemp "$CACHE_DIR/.$user.XXXXXX" 2>/dev/null) || tmp=""
+  if [ -n "$tmp" ]; then
+    if printf '%s\n' "$keys" > "$tmp" && chmod 0600 "$tmp" && mv -f "$tmp" "$cache"; then
+      :
+    else
+      rm -f "$tmp"
+    fi
+  fi
+  printf '%s\n' "$keys"
+elif [ -s "$cache" ]; then
+  cat "$cache"
+fi
+exit 0

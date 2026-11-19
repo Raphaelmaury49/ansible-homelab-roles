@@ -1,0 +1,22 @@
+# {{ ansible_managed }} (role ssh_keyserver)
+# HTTP clair : TLS termine par le reverse proxy (NPM). Seul /<user>.keys est servi.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    server_tokens off;
+    autoindex off;
+    root {{ ssh_keyserver_root }};
+
+    location ~ ^/[a-z_][a-z0-9_-]*\.keys$ {
+        limit_except GET { deny all; }
+        default_type text/plain;
+        add_header Cache-Control "no-store" always;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 404;
+    }
+}

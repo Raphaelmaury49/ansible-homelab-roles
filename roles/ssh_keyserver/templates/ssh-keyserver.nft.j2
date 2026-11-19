@@ -1,0 +1,6 @@
+# {{ ansible_managed }} (role ssh_keyserver)
+table inet filter {
+  chain input {
+    ip saddr { {{ ssh_keyserver_http_sources | join(', ') }} } tcp dport 80 accept comment "ssh-keyserver"
+  }
+}

@@ -1,0 +1,87 @@
+---
+# NE TOUCHE PAS a ~root/.ssh/authorized_keys : sur Proxmox VE c'est un lien symbolique vers
+# /etc/pve/priv/authorized_keys, et le fichier local reste l'acces de secours.
+
+- name: Paquets (curl, certificats)
+  ansible.builtin.package:
+    name: [curl, ca-certificates]
+    state: present
+
+- name: Compte systeme {{ ssh_keyserver_cmd_user }} (sans shell)
+  ansible.builtin.user:
+    name: "{{ ssh_keyserver_cmd_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ ssh_keyserver_cache_dir }}"
+    create_home: false
+    password: "!"
+    comment: SSH keys fetcher (AuthorizedKeysCommand)
+
+- name: Cache des cles
+  ansible.builtin.file:
+    path: "{{ ssh_keyserver_cache_dir }}"
+    state: directory
+    owner: "{{ ssh_keyserver_cmd_user }}"
+    group: "{{ ssh_keyserver_cmd_user }}"
+    mode: "0700"
+  when: not ansible_check_mode
+
+- name: Script ssh-keys-fetch
+  ansible.builtin.template:
+    src: ssh-keys-fetch.j2
+    dest: "{{ ssh_keyserver_script }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Mode d activation de sshd (ssh.socket sur Debian 13)
+  ansible.builtin.command: systemctl is-active ssh.socket
+  register: _ssh_keyserver_ssh_socket
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Dossier sshd_config.d
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# sshd retient la premiere valeur rencontree : l'Include doit etre en tete.
+- name: Include sshd_config.d present dans sshd_config (sinon ajoute en tete)
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^\s*Include\s+/etc/ssh/sshd_config\.d/\*\.conf\s*$'
+    line: Include /etc/ssh/sshd_config.d/*.conf
+    insertbefore: BOF
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload ssh (ssh_keyserver)
+
+- name: Configuration AuthorizedKeysCommand
+  ansible.builtin.template:
+    src: 50-keyserver.conf.j2
+    dest: /etc/ssh/sshd_config.d/50-keyserver.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload ssh (ssh_keyserver)
+
+- name: Valider la configuration sshd complete
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+  check_mode: false
+
+- name: Test du script en tant que {{ ssh_keyserver_cmd_user }}
+  ansible.builtin.command: "runuser -u {{ ssh_keyserver_cmd_user }} -- {{ ssh_keyserver_script }} {{ ssh_keyserver_users | first }}"
+  register: _ssh_keyserver_test_out
+  changed_when: false
+  check_mode: false
+  when: ssh_keyserver_test and not ansible_check_mode
+
+- name: Nombre de cles obtenues
+  ansible.builtin.debug:
+    msg: "{{ _ssh_keyserver_test_out.stdout_lines | length }} cle(s) obtenue(s) pour {{ ssh_keyserver_users | first }}"
+  when: ssh_keyserver_test and not ansible_check_mode
