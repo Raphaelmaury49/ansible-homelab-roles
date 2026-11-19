@@ -36,6 +36,7 @@ cache="$CACHE_DIR/$user.keys"
 serial_file="$CACHE_DIR/$user.serial"
 
 work=""
+# shellcheck disable=SC2329  # appelee via trap EXIT (faux positif)
 cleanup() { if [ -n "$work" ]; then rm -rf "$work"; fi; }
 trap cleanup EXIT
 trap 'exit 0' HUP INT TERM
