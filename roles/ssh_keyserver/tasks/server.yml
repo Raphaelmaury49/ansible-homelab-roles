@@ -19,7 +19,7 @@
   ansible.builtin.assert:
     that:
       - (item.value | default([], true)) | length > 0
-      - (item.value | first) is match('^# serial: [0-9]{1,12}$')
+      - "(item.value | first) is match('^# serial: [0-9]{1,12}$')"
     fail_msg: "{{ item.key }} : avec ssh_keyserver_signing, la 1re ligne doit etre '# serial: <entier>'"
     quiet: true
   loop: "{{ ssh_keyserver_keys | dict2items }}"
