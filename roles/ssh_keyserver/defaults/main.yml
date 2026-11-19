@@ -6,7 +6,8 @@ ssh_keyserver_mode: client
 # URL du serveur de cles (HTTPS, verification TLS). Le script appelle <url>/<user>.keys
 ssh_keyserver_url: https://keys.raphaelmaury.fr
 # Seuls ces comptes passent par le serveur de cles (les autres : le script sort en 0 sans rien afficher)
-ssh_keyserver_users: [root]
+# root : hotes hors IaC ; admin : hotes geres par le role base (PermitRootLogin no, AllowUsers admin)
+ssh_keyserver_users: [root, admin]
 # Compte systeme (sans shell) qui execute AuthorizedKeysCommand, proprietaire du cache
 ssh_keyserver_cmd_user: sshkeys
 ssh_keyserver_cache_dir: /var/cache/ssh-keys
