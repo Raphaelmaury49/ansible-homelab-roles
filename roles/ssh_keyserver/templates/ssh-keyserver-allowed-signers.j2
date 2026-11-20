@@ -1,0 +1,3 @@
+# {{ ansible_managed }} (role ssh_keyserver)
+# Cle publique de signature des listes de cles (la cle privee n'est jamais deployee).
+keyserver namespaces="sshkeys-v1" {{ ssh_keyserver_signer_pubkey | trim }}

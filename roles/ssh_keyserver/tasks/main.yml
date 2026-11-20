@@ -1,0 +1,15 @@
+---
+- name: Verifier le mode
+  ansible.builtin.assert:
+    that:
+      - ssh_keyserver_mode in ['server', 'client']
+    fail_msg: "ssh_keyserver_mode doit valoir 'server' ou 'client'"
+    quiet: true
+
+- name: Mode serveur
+  ansible.builtin.include_tasks: server.yml
+  when: ssh_keyserver_mode == 'server'
+
+- name: Mode client
+  ansible.builtin.include_tasks: client.yml
+  when: ssh_keyserver_mode == 'client'

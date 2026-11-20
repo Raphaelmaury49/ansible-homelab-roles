@@ -1,0 +1,34 @@
+# {{ ansible_managed }} (role ssh_keyserver)
+# HTTP clair : TLS termine par le reverse proxy (NPM). Seul /<user>.keys{{ ' (et .keys.sig)' if ssh_keyserver_signing else '' }} est servi.
+# Acces restreint aux sources ssh_keyserver_http_sources (reverse proxy), tout le reste : 403.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    server_tokens off;
+    autoindex off;
+    root {{ ssh_keyserver_root }};
+
+    access_log {{ ssh_keyserver_access_log }};
+
+{% for src in ssh_keyserver_http_sources %}
+    allow {{ src }};
+{% endfor %}
+    deny all;
+
+{% if ssh_keyserver_signing %}
+    location ~ ^/[a-z_][a-z0-9_-]*\.keys(\.sig)?$ {
+{% else %}
+    location ~ ^/[a-z_][a-z0-9_-]*\.keys$ {
+{% endif %}
+        limit_except GET { deny all; }
+        default_type text/plain;
+        add_header Cache-Control "no-store" always;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 404;
+    }
+}

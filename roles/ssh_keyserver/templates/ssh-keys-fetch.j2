@@ -1,0 +1,178 @@
+#!/bin/sh
+# {{ ansible_managed }} (role ssh_keyserver)
+# AuthorizedKeysCommand : ssh-keys-fetch %u
+#
+# Recupere <url>/<user>.keys (HTTPS, TLS verifie), ne garde que les cles valides, met en cache
+# (mktemp + mv atomique, 0600) et affiche les cles. Matrice des cas : README du role.
+# Sort TOUJOURS avec le code 0 : en cas de doute aucune cle n'est servie, et sshd retombe sur
+# le authorized_keys local (acces de secours).
+URL="{{ ssh_keyserver_url | regex_replace('/+$', '') }}"
+CACHE_DIR="{{ ssh_keyserver_cache_dir }}"
+MAX_AGE_DAYS="{{ ssh_keyserver_cache_max_age_days }}"
+MAX_KEYS="{{ ssh_keyserver_max_keys }}"
+ALLOW_RSA="{{ '1' if ssh_keyserver_allow_rsa else '0' }}"
+SIGNING="{{ '1' if ssh_keyserver_signing else '0' }}"
+ALLOWED_SIGNERS="{{ ssh_keyserver_allowed_signers }}"
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+LC_ALL=C
+export LC_ALL
+umask 077
+
+log() { logger -t ssh-keys-fetch "$*" >/dev/null 2>&1 || :; }
+
+# --- Validation de %u : forme ^[a-z_][a-z0-9_-]*$ puis liste blanche stricte ---
+user="${1:-}"
+case "$user" in
+  ''|*[!a-z0-9_-]*|[!a-z_]*) exit 0 ;;
+esac
+case "$user" in
+  {{ ssh_keyserver_users | join('|') }}) ;;
+  *) exit 0 ;;
+esac
+
+cache="$CACHE_DIR/$user.keys"
+serial_file="$CACHE_DIR/$user.serial"
+
+work=""
+# shellcheck disable=SC2329  # appelee via trap EXIT (faux positif)
+cleanup() { if [ -n "$work" ]; then rm -rf "$work"; fi; }
+trap cleanup EXIT
+trap 'exit 0' HUP INT TERM
+
+# Cache utilisable : non vide et plus recent que MAX_AGE_DAYS jours
+cache_fresh() {
+  [ -s "$cache" ] || return 1
+  [ -n "$(find "$cache" -maxdepth 0 -mtime "-$MAX_AGE_DAYS" 2>/dev/null)" ]
+}
+
+# Repli sur le cache (erreur reseau, timeout, 5xx, 403/autre, reponse rejetee). $1 = motif
+use_cache() {
+  if cache_fresh; then
+    log "user=$user: $1, repli sur le cache"
+    grep -v '^#' "$cache"
+  else
+    log "user=$user: $1, cache absent ou plus vieux que ${MAX_AGE_DAYS}j, aucune cle servie"
+  fi
+  exit 0
+}
+
+# Revocation explicite (404, ou 200 sans cle valide) : cache purge, rien n'est affiche. $1 = motif
+# Le fichier .serial (anti-rejeu) est conserve.
+revoke() {
+  rm -f "$cache"
+  log "user=$user: revocation ($1), cache purge"
+  exit 0
+}
+
+# Ecriture atomique dans le cache : contenu sur stdin, $1 = destination
+atomic_write() {
+  _t=$(mktemp "$CACHE_DIR/.$user.XXXXXX" 2>/dev/null) || return 1
+  if cat > "$_t" && chmod 0600 "$_t" && mv -f "$_t" "$1"; then
+    return 0
+  fi
+  rm -f "$_t"
+  return 1
+}
+
+# Telechargement : $1 = URL, $2 = fichier. Affiche le code HTTP, "000" si curl echoue
+# (reseau, timeout, TLS, fichier trop gros). Jamais de redirection suivie, TLS toujours verifie.
+fetch() {
+  _code=$(curl -sS -o "$2" -w '%{http_code}' --proto '=https' --tlsv1.2 --max-time 3 --max-filesize 16384 "$1" 2>/dev/null) || _code=000
+  printf '%s' "$_code"
+}
+
+# Serial : 1re ligne "# serial: <entier>" du fichier $1 (vide si absente)
+serial_of() {
+  head -n 1 "$1" 2>/dev/null | tr -d '\r' | sed -n 's/^# serial: \([0-9]\{1,12\}\)$/\1/p'
+}
+
+work=$(mktemp -d "$CACHE_DIR/.work.XXXXXX" 2>/dev/null) || work=$(mktemp -d 2>/dev/null) || work=""
+if [ -z "$work" ]; then
+  use_cache "repertoire de travail indisponible"
+fi
+body="$work/body"
+
+# --- Telechargement des cles ---
+code=$(fetch "$URL/$user.keys" "$body")
+case "$code" in
+  200) ;;
+  404) revoke "HTTP 404" ;;
+  *)
+    # 403 (ACL, ban CrowdSec), 5xx, 000 (reseau/timeout) ... : JAMAIS une revocation
+    log "user=$user: erreur HTTP $code"
+    use_cache "HTTP $code"
+    ;;
+esac
+
+# --- Signature (optionnelle) : verifiee sur le corps brut, avant toute interpretation ---
+serial=""
+if [ "$SIGNING" = 1 ]; then
+  scode=$(fetch "$URL/$user.keys.sig" "$work/sig")
+  if [ "$scode" != 200 ]; then
+    log "user=$user: erreur HTTP $scode sur $user.keys.sig"
+    use_cache "signature indisponible"
+  fi
+  if ! ssh-keygen -Y verify -f "$ALLOWED_SIGNERS" -I keyserver -n sshkeys-v1 -s "$work/sig" < "$body" >/dev/null 2>&1; then
+    log "user=$user: reponse rejetee (signature invalide)"
+    use_cache "signature invalide"
+  fi
+  serial=$(serial_of "$body")
+  if [ -z "$serial" ]; then
+    log "user=$user: reponse rejetee (serial absent ou invalide)"
+    use_cache "serial absent"
+  fi
+  floor=0
+  for _f in "$cache" "$serial_file"; do
+    _s=$(serial_of "$_f")
+    if [ -n "$_s" ] && [ "$_s" -gt "$floor" ]; then floor=$_s; fi
+  done
+  if [ "$serial" -lt "$floor" ]; then
+    log "user=$user: reponse rejetee (serial $serial inferieur a $floor, rejeu ?)"
+    use_cache "serial en retrait"
+  fi
+  printf '# serial: %s\n' "$serial" | atomic_write "$serial_file"
+fi
+
+# --- Filtrage et validation des cles ---
+tr -d '\r' < "$body" > "$work/lines"
+: > "$work/valid"
+n=0
+while IFS= read -r line || [ -n "$line" ]; do
+  [ "$n" -lt "$MAX_KEYS" ] || break
+  rsa=0
+  case "$line" in
+    "ssh-ed25519 "*|"sk-ssh-ed25519@openssh.com "*) ;;
+    "ecdsa-sha2-nistp256 "*|"ecdsa-sha2-nistp384 "*|"ecdsa-sha2-nistp521 "*) ;;
+    "sk-ecdsa-sha2-nistp256@openssh.com "*) ;;
+    "ssh-rsa "*)
+      [ "$ALLOW_RSA" = 1 ] || continue
+      rsa=1
+      ;;
+    *) continue ;;
+  esac
+  # Fichier temporaire (et non /dev/stdin) : fonctionne sur toutes les versions d'OpenSSH
+  printf '%s\n' "$line" > "$work/key"
+  info=$(ssh-keygen -lf "$work/key" 2>/dev/null) || continue
+  if [ "$rsa" = 1 ]; then
+    bits=${info%% *}
+    case "$bits" in ''|*[!0-9]*) continue ;; esac
+    [ "$bits" -ge 3072 ] || continue
+  fi
+  printf '%s\n' "$line" >> "$work/valid"
+  n=$((n + 1))
+done < "$work/lines"
+
+# 200 sans aucune cle valide : revocation explicite
+if [ "$n" -eq 0 ]; then
+  revoke "HTTP 200 sans cle valide"
+fi
+
+# --- Mise a jour du cache (atomique) puis affichage ---
+{
+  if [ "$SIGNING" = 1 ]; then printf '# serial: %s\n' "$serial"; fi
+  cat "$work/valid"
+} | atomic_write "$cache"
+cat "$work/valid"
+exit 0

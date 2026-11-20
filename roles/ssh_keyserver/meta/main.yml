@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: ssh_keyserver
+  author: Raphaelmaury49
+  description: Centralized SSH public keys - nginx server (plain text /<user>.keys) and client (AuthorizedKeysCommand with local cache, authorized_keys kept as fallback)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions: [bookworm, trixie]
+dependencies: []

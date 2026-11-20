@@ -11,6 +11,7 @@ The roles hold **no infrastructure data**: every address, user and key comes fro
 | `base` | Admin account with exclusive SSH keys, sshd hardening (keys only, no root, `AllowUsers`), nftables default-drop with an anti-lockout guard, unattended upgrades, timezone (LXC-safe), node_exporter, qemu-guest-agent on VMs |
 | `mcp_shell` | Per-guest MCP server (FastMCP, streamable HTTP) exposing `run_command`, `read_file`, `write_file`, `system_info`. Reachable only from the gateway IP (nftables) **and** with a per-guest shared key (`X-MCP-Key`). Dedicated system user, sudo sessions recorded with `log_output`, every call logged to syslog (`mcp-shell-audit`) |
 | `technitium` | Technitium DNS Server via the official installer (.NET runtime, non-root systemd service), first-boot API bootstrap (admin password change, non-expiring API token stored on the controller), idempotent settings through `/api/settings/set`, nftables rules for DNS and the web console |
+| `ssh_keyserver` | Centralized SSH public keys. `server` mode: nginx serves `/<user>.keys` in plain text. `client` mode: sshd `AuthorizedKeysCommand` with a local cache, the local `authorized_keys` stays as the fallback. See [roles/ssh_keyserver](roles/ssh_keyserver/README.md) |
 
 ## Design notes
 
