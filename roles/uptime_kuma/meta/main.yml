@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: uptime_kuma
+  author: Raphaelmaury49
+  description: Install Uptime Kuma 2.x natively (git tag, npm ci, systemd hardened unit, nftables)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions: [trixie]
+dependencies: []

@@ -1,0 +1,37 @@
+---
+# Version (tag git, sans prefixe "v") - 2.x uniquement. Changer cette valeur = mise a jour
+# (git fetch du tag, npm ci, download-dist, restart).
+uptime_kuma_version: "2.5.12"
+uptime_kuma_repo: https://github.com/louislam/uptime-kuma.git
+uptime_kuma_git_depth: 1             # 0 = clone complet
+
+uptime_kuma_user: uptime-kuma
+uptime_kuma_group: uptime-kuma
+uptime_kuma_install_dir: /opt/uptime-kuma        # code (root:root, lecture seule pour le service)
+uptime_kuma_data_dir: /var/lib/uptime-kuma       # kuma.db, upload/, db-config.json (seul chemin inscriptible)
+
+uptime_kuma_host: "0.0.0.0"          # UPTIME_KUMA_HOST ; le filtrage se fait par nftables
+uptime_kuma_port: 3001               # UPTIME_KUMA_PORT
+
+# Node.js fourni par Debian 13 (20.19). Kuma 2.5.x exige node >= 20.4.
+uptime_kuma_node_bin: /usr/bin/node
+uptime_kuma_node_min: "20.4.0"
+uptime_kuma_packages: [git, nodejs, npm, ca-certificates, iputils-ping]
+# Repli de compilation du module natif sqlite si aucun binaire precompile n est telecharge
+uptime_kuma_build_packages: [build-essential, python3]
+
+# Pare-feu : CIDR autorisees sur uptime_kuma_port (/etc/nftables.d/uptime-kuma.nft) - OBLIGATOIRE
+uptime_kuma_http_sources: []
+
+# Variables d environnement supplementaires du service (dict nom -> valeur)
+uptime_kuma_extra_env: {}
+
+# Forcer npm ci + download-dist meme si rien n a change
+uptime_kuma_force_rebuild: false
+# Copie de kuma.db (kuma.db.pre-<version>) avant chaque build (le schema 2.x n est pas reversible)
+uptime_kuma_backup_db_on_upgrade: true
+
+# Controle apres demarrage (200 ou 302 sur http://127.0.0.1:<port>/)
+uptime_kuma_healthcheck: true
+uptime_kuma_healthcheck_retries: 60
+uptime_kuma_healthcheck_delay: 5

@@ -1,0 +1,6 @@
+# {{ ansible_managed }} (role uptime_kuma)
+table inet filter {
+  chain input {
+    ip saddr { {{ uptime_kuma_http_sources | join(', ') }} } tcp dport {{ uptime_kuma_port }} accept comment "uptime-kuma"
+  }
+}
