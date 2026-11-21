@@ -4,14 +4,16 @@
     that:
       - uptime_kuma_http_sources is not string
       - uptime_kuma_http_sources | length > 0
-      - "uptime_kuma_version is match('^2[.][0-9]+[.][0-9]+(-[0-9A-Za-z.]+)?$')"
+      - "uptime_kuma_version is match('^[12][.][0-9]+[.][0-9]+(-[0-9A-Za-z.]+)?$')"
+      - "(uptime_kuma_version.split('.')[0] | int) == 1 or (uptime_kuma_allow_v2 | bool)"
       - uptime_kuma_port | int > 0
       - uptime_kuma_port | int < 65536
       - "uptime_kuma_data_dir is match('^/[^ ]+')"
       - "uptime_kuma_install_dir is match('^/[^ ]+')"
     fail_msg: >-
       uptime_kuma_http_sources (liste non vide de CIDR) est obligatoire ; uptime_kuma_version doit etre
-      un tag 2.x (ex. 2.5.12) ; port et repertoires doivent etre valides
+      un tag 1.x ou 2.x (ex. 1.23.17) ; une 2.x exige uptime_kuma_allow_v2: true ; port et repertoires
+      doivent etre valides
     quiet: true
 
 - name: Paquets
@@ -127,7 +129,7 @@
         path: "{{ uptime_kuma_data_dir }}/kuma.db"
       register: _uk_db
 
-    # Au premier passage avec un kuma.db 1.x depose a la main, c est la sauvegarde de la base 1.x d origine
+    # Au premier passage avec un kuma.db depose a la main, c est la sauvegarde de la base d origine
     - name: Copie de securite de kuma.db (non ecrasee si elle existe deja)
       ansible.builtin.copy:
         src: "{{ uptime_kuma_data_dir }}/kuma.db"
@@ -139,6 +141,7 @@
         mode: "0600"
       when: uptime_kuma_backup_db_on_upgrade and _uk_db.stat.exists
 
+    # equivalent de `npm run setup` (git checkout <tag> && npm ci --production && npm run download-dist)
     - name: Dependances npm (production uniquement)
       ansible.builtin.command: npm ci --omit dev --no-audit --no-fund
       args:
@@ -214,7 +217,7 @@
     state: started
     daemon_reload: true
 
-# Pendant la migration 1.x -> 2.x, un serveur temporaire de progression ecoute sur le meme port :
+# En 2.x, la migration d agregats peut etre longue et un serveur temporaire ecoute sur le meme port :
 # adapter uptime_kuma_healthcheck_retries / _delay (ou desactiver) pour une grosse base.
 - name: Controle HTTP (200 ou 302)
   ansible.builtin.uri:

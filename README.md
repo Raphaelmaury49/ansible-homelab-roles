@@ -12,7 +12,7 @@ The roles hold **no infrastructure data**: every address, user and key comes fro
 | `mcp_shell` | Per-guest MCP server (FastMCP, streamable HTTP) exposing `run_command`, `read_file`, `write_file`, `system_info`. Reachable only from the gateway IP (nftables) **and** with a per-guest shared key (`X-MCP-Key`). Dedicated system user, sudo sessions recorded with `log_output`, every call logged to syslog (`mcp-shell-audit`) |
 | `technitium` | Technitium DNS Server via the official installer (.NET runtime, non-root systemd service), first-boot API bootstrap (admin password change, non-expiring API token stored on the controller), idempotent settings through `/api/settings/set`, nftables rules for DNS and the web console |
 | `ssh_keyserver` | Centralized SSH public keys. `server` mode: nginx serves `/<user>.keys` in plain text. `client` mode: sshd `AuthorizedKeysCommand` with a local cache, the local `authorized_keys` stays as the fallback. See [roles/ssh_keyserver](roles/ssh_keyserver/README.md) |
-| `uptime_kuma` | Uptime Kuma 2.x installed natively (pinned git tag, `npm ci`, hardened systemd unit, mandatory source-restricted nftables rule, idempotent upgrades, HTTP health check). See [roles/uptime_kuma](roles/uptime_kuma/README.md) |
+| `uptime_kuma` | Uptime Kuma installed natively (pinned git tag, default 1.23.17, 2.x opt-in; `npm ci`, hardened systemd unit, mandatory source-restricted nftables rule, idempotent upgrades, HTTP health check). See [roles/uptime_kuma](roles/uptime_kuma/README.md) |
 
 ## Design notes
 

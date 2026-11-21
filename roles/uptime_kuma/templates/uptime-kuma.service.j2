@@ -14,8 +14,10 @@ Environment="NODE_ENV=production"
 Environment="DATA_DIR={{ uptime_kuma_data_dir | regex_replace('/+$', '') }}/"
 Environment="UPTIME_KUMA_HOST={{ uptime_kuma_host }}"
 Environment="UPTIME_KUMA_PORT={{ uptime_kuma_port }}"
-# SQLite impose : evite l assistant de choix de base (et tout MariaDB) au premier demarrage
+{% if (uptime_kuma_version.split('.')[0] | int) >= 2 %}
+# 2.x : SQLite impose (evite l assistant de choix de base au premier demarrage). Inutile en 1.x.
 Environment="UPTIME_KUMA_DB_TYPE=sqlite"
+{% endif %}
 {% for _k, _v in (uptime_kuma_extra_env | dictsort) %}
 Environment="{{ _k }}={{ _v }}"
 {% endfor %}

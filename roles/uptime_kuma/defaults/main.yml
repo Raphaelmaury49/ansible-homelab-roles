@@ -1,19 +1,22 @@
 ---
-# Version (tag git, sans prefixe "v") - 2.x uniquement. Changer cette valeur = mise a jour
+# Version (tag git, sans prefixe "v"). Changer cette valeur = mise a jour
 # (git fetch du tag, npm ci, download-dist, restart).
-uptime_kuma_version: "2.5.12"
+# 1.23.17 = derniere 1.x. Une 2.x exige uptime_kuma_allow_v2: true (migration de schema irreversible,
+# client MCP uptime-kuma-api 1.2.1 incompatible : voir le README).
+uptime_kuma_version: "1.23.17"
+uptime_kuma_allow_v2: false
 uptime_kuma_repo: https://github.com/louislam/uptime-kuma.git
 uptime_kuma_git_depth: 1             # 0 = clone complet
 
 uptime_kuma_user: uptime-kuma
 uptime_kuma_group: uptime-kuma
 uptime_kuma_install_dir: /opt/uptime-kuma        # code (root:root, lecture seule pour le service)
-uptime_kuma_data_dir: /var/lib/uptime-kuma       # kuma.db, upload/, db-config.json (seul chemin inscriptible)
+uptime_kuma_data_dir: /var/lib/uptime-kuma       # kuma.db, upload/ (seul chemin inscriptible)
 
 uptime_kuma_host: "0.0.0.0"          # UPTIME_KUMA_HOST ; le filtrage se fait par nftables
 uptime_kuma_port: 3001               # UPTIME_KUMA_PORT
 
-# Node.js fourni par Debian 13 (20.19). Kuma 2.5.x exige node >= 20.4.
+# Node.js fourni par Debian 13 (20.19). Kuma 1.23 et 2.5 exigent node >= 20.4 (pour la branche 20).
 uptime_kuma_node_bin: /usr/bin/node
 uptime_kuma_node_min: "20.4.0"
 uptime_kuma_packages: [git, nodejs, npm, ca-certificates, iputils-ping]
@@ -28,7 +31,7 @@ uptime_kuma_extra_env: {}
 
 # Forcer npm ci + download-dist meme si rien n a change
 uptime_kuma_force_rebuild: false
-# Copie de kuma.db (kuma.db.pre-<version>) avant chaque build (le schema 2.x n est pas reversible)
+# Copie de kuma.db (kuma.db.pre-<version>) avant chaque build
 uptime_kuma_backup_db_on_upgrade: true
 
 # Controle apres demarrage (200 ou 302 sur http://127.0.0.1:<port>/)
