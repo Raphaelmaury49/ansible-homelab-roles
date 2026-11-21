@@ -1,0 +1,51 @@
+# {{ ansible_managed }} (role uptime_kuma)
+[Unit]
+Description=Uptime Kuma {{ uptime_kuma_version }}
+Documentation=https://github.com/louislam/uptime-kuma
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ uptime_kuma_user }}
+Group={{ uptime_kuma_group }}
+WorkingDirectory={{ uptime_kuma_install_dir }}
+Environment="NODE_ENV=production"
+Environment="DATA_DIR={{ uptime_kuma_data_dir | regex_replace('/+$', '') }}/"
+Environment="UPTIME_KUMA_HOST={{ uptime_kuma_host }}"
+Environment="UPTIME_KUMA_PORT={{ uptime_kuma_port }}"
+{% if (uptime_kuma_version.split('.')[0] | int) >= 2 %}
+# 2.x : SQLite impose (evite l assistant de choix de base au premier demarrage). Inutile en 1.x.
+Environment="UPTIME_KUMA_DB_TYPE=sqlite"
+{% endif %}
+{% for _k, _v in (uptime_kuma_extra_env | dictsort) %}
+Environment="{{ _k }}={{ _v }}"
+{% endfor %}
+ExecStart={{ uptime_kuma_node_bin }} server/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+UMask=0077
+
+# Durcissement
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths={{ uptime_kuma_data_dir }}
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+# ping (moniteurs ICMP) : le binaire ne peut plus s elever sous NoNewPrivileges
+CapabilityBoundingSet=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

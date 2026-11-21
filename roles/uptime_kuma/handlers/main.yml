@@ -1,0 +1,15 @@
+---
+# L ordre de definition compte : daemon-reload avant restart.
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart uptime-kuma
+  ansible.builtin.systemd_service:
+    name: uptime-kuma
+    state: restarted
+
+- name: Reload nftables
+  ansible.builtin.systemd_service:
+    name: nftables
+    state: reloaded
